@@ -1,0 +1,10 @@
+server:
+  port: 8080
+
+target_url: https://api.openai.com
+
+vault:
+  # memory | redis
+  type: memory
+  # used only when type is redis
+  # redis_url: redis://localhost:6379/0
