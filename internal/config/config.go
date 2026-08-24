@@ -14,6 +14,9 @@ type Config struct {
 	} `yaml:"server"`
 	TargetURL string      `yaml:"target_url"`
 	Vault     VaultConfig `yaml:"vault"`
+	// CustomWords are extra strings the analyzer masks alongside the built-in
+	// entity detectors.
+	CustomWords []string `yaml:"custom_words"`
 }
 
 type VaultConfig struct {

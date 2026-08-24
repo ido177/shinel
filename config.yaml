@@ -8,3 +8,8 @@ vault:
   type: memory
   # used only when type is redis
   # redis_url: redis://localhost:6379/0
+
+# extra strings to mask, matched case-sensitively
+custom_words: []
+#  - Acme Corporation
+#  - Project Bluebird
