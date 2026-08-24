@@ -22,6 +22,10 @@ func NewRedisVault(url string) (*RedisVault, error) {
 	return &RedisVault{client: redis.NewClient(opt)}, nil
 }
 
+// ponytail: methods use context.Background() because Vault takes no ctx, so a
+// stalled Redis has no deadline beyond the client's own timeouts. Upgrade path:
+// add ctx as the first argument to the Vault interface once an HTTP handler
+// exists to pass the request context down.
 func (v *RedisVault) SaveMapping(reqID, token, realValue string) error {
 	if err := v.client.Set(context.Background(), key(reqID, token), realValue, ttl).Err(); err != nil {
 		return fmt.Errorf("vault: save mapping: %w", err)
