@@ -58,7 +58,7 @@ func (u *upstream) received(t *testing.T) string {
 func newProxy(t *testing.T, targetURL string, customWords []string) *httptest.Server {
 	t.Helper()
 	cfg := &config.Config{TargetURL: targetURL}
-	h, err := New(cfg, vault.NewInMemoryVault(), analyzer.New(customWords))
+	h, err := New(cfg, vault.NewInMemoryVault(), analyzer.New(customWords, nil))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -273,7 +273,7 @@ func TestProxyReportsUpstreamFailure(t *testing.T) {
 func TestNewRejectsBadTarget(t *testing.T) {
 	for _, target := range []string{"", "not-a-url", "://missing-scheme"} {
 		cfg := &config.Config{TargetURL: target}
-		if _, err := New(cfg, vault.NewInMemoryVault(), analyzer.New(nil)); err == nil {
+		if _, err := New(cfg, vault.NewInMemoryVault(), analyzer.New(nil, nil)); err == nil {
 			t.Errorf("New(%q): want error, got nil", target)
 		}
 	}

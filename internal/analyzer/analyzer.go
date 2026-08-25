@@ -3,6 +3,7 @@
 package analyzer
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"regexp"
@@ -27,14 +28,16 @@ var (
 type AnalyzerEngine struct {
 	matcher *ahocorasick.Matcher
 	dict    []string
+	ml      *MLEngineClient
 }
 
-// New builds an engine that also masks every word in customWords.
+// New builds an engine that also masks every word in customWords. A nil ml
+// turns off the model layer, leaving the deterministic detectors on their own.
 //
 // ponytail: custom words are matched byte-exactly, so "John" does not match
 // "john". Upgrade path: fold case into a normalized copy of the text and keep
 // an offset map back to the original, or swap in a case-insensitive matcher.
-func New(customWords []string) *AnalyzerEngine {
+func New(customWords []string, ml *MLEngineClient) *AnalyzerEngine {
 	dict := make([]string, 0, len(customWords))
 	for _, w := range customWords {
 		// An empty pattern would spin forever in the strings.Index loop below.
@@ -42,7 +45,7 @@ func New(customWords []string) *AnalyzerEngine {
 			dict = append(dict, w)
 		}
 	}
-	e := &AnalyzerEngine{dict: dict}
+	e := &AnalyzerEngine{dict: dict, ml: ml}
 	if len(dict) > 0 {
 		e.matcher = ahocorasick.NewStringMatcher(dict)
 	}
@@ -58,8 +61,12 @@ type span struct {
 // Anonymize returns text with every detected value replaced by a token, plus a
 // map from token to the real value it stands for. Repeats of the same value
 // share one token.
-func (e *AnalyzerEngine) Anonymize(text string) (string, map[string]string) {
-	spans := e.collect(text)
+//
+// The regex and dictionary detectors run first, then the ML sidecar, which only
+// gets to claim text the deterministic layer left alone. An unreachable sidecar
+// is logged and skipped rather than failing the call.
+func (e *AnalyzerEngine) Anonymize(ctx context.Context, text string) (string, map[string]string) {
+	spans := resolveConflicts(e.collect(text), e.collectML(ctx, text))
 	sortSpans(spans)
 
 	var b strings.Builder

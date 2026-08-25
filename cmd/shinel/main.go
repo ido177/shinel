@@ -28,7 +28,12 @@ func main() {
 		log.Fatalf("shinel: %v", err)
 	}
 
-	handler, err := proxy.New(cfg, v, analyzer.New(cfg.CustomWords))
+	var ml *analyzer.MLEngineClient
+	if cfg.MLEngine.URL != "" {
+		ml = analyzer.NewMLEngineClient(cfg.MLEngine.URL, cfg.MLEngine.Labels, cfg.MLEngine.Timeout())
+	}
+
+	handler, err := proxy.New(cfg, v, analyzer.New(cfg.CustomWords, ml))
 	if err != nil {
 		log.Fatalf("shinel: %v", err)
 	}
@@ -44,7 +49,11 @@ func main() {
 		IdleTimeout:       2 * time.Minute,
 	}
 
-	log.Printf("shinel: vault=%s, target=%s, listening on %s", cfg.Vault.Type, cfg.TargetURL, addr)
+	mlState := "off"
+	if ml != nil {
+		mlState = cfg.MLEngine.URL
+	}
+	log.Printf("shinel: vault=%s, target=%s, ml=%s, listening on %s", cfg.Vault.Type, cfg.TargetURL, mlState, addr)
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("shinel: %v", err)
 	}

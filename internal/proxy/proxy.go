@@ -93,7 +93,7 @@ func maskRequest(req *http.Request, v vault.Vault, a *analyzer.AnalyzerEngine) {
 		return
 	}
 
-	masked, mapping := a.Anonymize(string(body))
+	masked, mapping := a.Anonymize(req.Context(), string(body))
 	reqID := reqIDFrom(req.Context())
 	for token, value := range mapping {
 		if err := v.SaveMapping(reqID, token, value); err != nil {

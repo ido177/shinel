@@ -13,3 +13,13 @@ vault:
 custom_words: []
 #  - Acme Corporation
 #  - Project Bluebird
+
+# named entity sidecar; leave url empty to run without it
+ml_engine:
+  url: ""
+  # url: http://ml-engine:8000/analyze
+  labels:
+    - PERSON
+    - ORG
+    - LOCATION
+  timeout_ms: 2000

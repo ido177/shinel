@@ -4,6 +4,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -16,7 +17,23 @@ type Config struct {
 	Vault     VaultConfig `yaml:"vault"`
 	// CustomWords are extra strings the analyzer masks alongside the built-in
 	// entity detectors.
-	CustomWords []string `yaml:"custom_words"`
+	CustomWords []string       `yaml:"custom_words"`
+	MLEngine    MLEngineConfig `yaml:"ml_engine"`
+}
+
+// MLEngineConfig points at the Python sidecar. An empty URL turns the model
+// layer off, so shinel runs on its own.
+type MLEngineConfig struct {
+	URL    string   `yaml:"url"`
+	Labels []string `yaml:"labels"`
+	// TimeoutMS bounds one call to the sidecar. Milliseconds rather than a
+	// duration string, so a typo cannot turn into a parse error at startup.
+	TimeoutMS int `yaml:"timeout_ms"`
+}
+
+// Timeout is TimeoutMS as a duration.
+func (m MLEngineConfig) Timeout() time.Duration {
+	return time.Duration(m.TimeoutMS) * time.Millisecond
 }
 
 type VaultConfig struct {
@@ -30,6 +47,10 @@ func defaults() *Config {
 		Vault: VaultConfig{
 			Type:     "memory",
 			RedisURL: "redis://localhost:6379/0",
+		},
+		MLEngine: MLEngineConfig{
+			Labels:    []string{"PERSON", "ORG", "LOCATION"},
+			TimeoutMS: 2000,
 		},
 	}
 	cfg.Server.Port = 8080

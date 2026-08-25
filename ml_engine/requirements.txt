@@ -1,0 +1,8 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pydantic>=2.9.0
+gliner>=0.2.16
+
+# needed by fastapi.testclient
+httpx>=0.27.0
+pytest>=8.3.0

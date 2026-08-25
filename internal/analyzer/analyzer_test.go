@@ -1,6 +1,7 @@
 package analyzer
 
 import (
+	"context"
 	"strings"
 	"sync"
 	"testing"
@@ -92,7 +93,7 @@ func TestAnonymize(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, mapping := New(tc.custom).Anonymize(tc.in)
+			got, mapping := New(tc.custom, nil).Anonymize(t.Context(), tc.in)
 			if got != tc.want {
 				t.Errorf("Anonymize(%q)\n got %q\nwant %q", tc.in, got, tc.want)
 			}
@@ -112,7 +113,7 @@ func restore(masked string, mapping map[string]string) string {
 }
 
 func TestAnonymizeMappingIsOnePerValue(t *testing.T) {
-	_, mapping := New(nil).Anonymize("a@x.com then a@x.com again")
+	_, mapping := New(nil, nil).Anonymize(t.Context(), "a@x.com then a@x.com again")
 
 	if len(mapping) != 1 {
 		t.Fatalf("mapping has %d entries, want 1: %v", len(mapping), mapping)
@@ -125,7 +126,7 @@ func TestAnonymizeMappingIsOnePerValue(t *testing.T) {
 // The engine is shared by concurrent requests, so Anonymize must not race.
 // Run with -race for this to mean anything.
 func TestAnonymizeConcurrent(t *testing.T) {
-	e := New([]string{"Acme"})
+	e := New([]string{"Acme"}, nil)
 	const want = "[CUSTOM_1] wrote to [EMAIL_1]"
 
 	var wg sync.WaitGroup
@@ -134,7 +135,7 @@ func TestAnonymizeConcurrent(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for range 50 {
-				if got, _ := e.Anonymize("Acme wrote to alice@example.com"); got != want {
+				if got, _ := e.Anonymize(context.Background(), "Acme wrote to alice@example.com"); got != want {
 					t.Errorf("Anonymize = %q, want %q", got, want)
 					return
 				}
