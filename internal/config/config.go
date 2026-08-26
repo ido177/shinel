@@ -69,5 +69,11 @@ func Load(path string) (*Config, error) {
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("parse config %s: %w", path, err)
 	}
+	// SHINEL_ML_URL wins over the file so one config works both on a laptop and
+	// in compose, where the sidecar answers at a service name that does not
+	// resolve anywhere else.
+	if url := os.Getenv("SHINEL_ML_URL"); url != "" {
+		cfg.MLEngine.URL = url
+	}
 	return cfg, nil
 }

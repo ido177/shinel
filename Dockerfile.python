@@ -1,0 +1,28 @@
+FROM python:3.12-slim
+WORKDIR /app
+
+COPY ml_engine/requirements.txt ml_engine/requirements.txt
+# CPU wheels only: the sidecar never has a GPU, and the default index
+# would pull a CUDA torch on linux/amd64.
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
+ && pip install --no-cache-dir -r ml_engine/requirements.txt
+
+COPY ml_engine/main.py ml_engine/main.py
+
+# Bake the GLiNER weights in so the container starts without a network.
+# HF_HOME must match at runtime or the library would look elsewhere and
+# try to download again.
+ENV HF_HOME=/opt/hf
+# Xet CDN (us.aws.cdn.hf.co) 403s from some networks; fall back to regular HTTPS.
+ENV HF_HUB_DISABLE_XET=1
+
+RUN python -c "from gliner import GLiNER; GLiNER.from_pretrained('urchade/gliner_multi-v2.1')"
+
+WORKDIR /app/ml_engine
+EXPOSE 8000
+
+# Ready only after the model is in memory (GET /health returns status=ok).
+HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=12 \
+  CMD python -c "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8000/health')); raise SystemExit(0 if d.get('status')=='ok' else 1)"
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
