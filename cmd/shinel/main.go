@@ -53,7 +53,7 @@ func main() {
 		}
 		cfg.Admin.Token = tok
 		if generated {
-			log.Printf("shinel: admin HTTP basic user=admin password=%s", tok)
+			log.Printf("shinel: admin dashboard password=%s", tok)
 		}
 		go serveAdmin(cfg, st, logs)
 	}
@@ -73,7 +73,7 @@ func main() {
 	if ml != nil {
 		mlState = cfg.MLEngine.URL
 	}
-	log.Printf("shinel: vault=%s, target=%s, ml=%s, listening on %s", cfg.Vault.Type, cfg.TargetURL, mlState, addr)
+	log.Printf("shinel: vault=%s, target=%s, ml=%s, listening on %s", cfg.Vault.Type, admin.RedactURL(cfg.TargetURL), admin.RedactURL(mlState), addr)
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("shinel: %v", err)
 	}
@@ -81,14 +81,18 @@ func main() {
 
 func serveAdmin(cfg *config.Config, st *stats.Store, logs *admin.LogSink) {
 	addr := net.JoinHostPort(cfg.Admin.Bind, strconv.Itoa(cfg.Admin.Port))
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.Printf("shinel: admin disabled: %v", err)
+		return
+	}
+	log.Printf("shinel: admin on http://%s", addr)
 	srv := &http.Server{
-		Addr:              addr,
 		Handler:           admin.New(cfg, st, logs),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       2 * time.Minute,
 	}
-	log.Printf("shinel: admin on http://%s", addr)
-	if err := srv.ListenAndServe(); err != nil {
-		log.Fatalf("shinel: admin: %v", err)
+	if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+		log.Printf("shinel: admin: %v", err)
 	}
 }

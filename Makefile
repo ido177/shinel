@@ -25,6 +25,7 @@ up:
 	@set -a; [ -f .env ] && . ./.env; set +a; \
 	export HF_TOKEN="$${HF_TOKEN-}"; \
 	export SHINEL_ADMIN_TOKEN="$${SHINEL_ADMIN_TOKEN-}"; \
+	docker compose build proxy; \
 	docker compose up -d
 
 down:

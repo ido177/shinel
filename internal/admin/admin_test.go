@@ -45,6 +45,13 @@ func TestConfigRedactsRedisPassword(t *testing.T) {
 	}
 }
 
+func TestRedactURL(t *testing.T) {
+	got := RedactURL("https://user:sk-live@api.example/v1?api_key=sk-live")
+	if strings.Contains(got, "sk-live") {
+		t.Errorf("leaked in %s", got)
+	}
+}
+
 func TestStatsAndIndex(t *testing.T) {
 	st := stats.New(10)
 	st.Record("POST", "/v1/chat", map[string]string{"[EMAIL_1]": "a@x.com"})
@@ -52,8 +59,18 @@ func TestStatsAndIndex(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
-	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "Shinel 🧥") {
-		t.Fatalf("index status %d body %q", rec.Code, rec.Body.String()[:min(120, rec.Body.Len())])
+	body := rec.Body.String()
+	if rec.Code != 200 || !strings.Contains(body, "<title>Shinel</title>") {
+		t.Fatalf("index status %d body %q", rec.Code, body[:min(120, rec.Body.Len())])
+	}
+	if strings.Contains(body, "<title>Shinel 🧥") {
+		t.Error("title should not contain the emoji")
+	}
+	if !strings.Contains(body, `rel="icon"`) || !strings.Contains(body, "🧥") {
+		t.Error("index missing favicon or coat mark")
+	}
+	if !strings.Contains(body, "<h1>Shinel</h1>") {
+		t.Error("index missing service name")
 	}
 	if !strings.Contains(rec.Body.String(), "https://github.com/ido177/shinel") {
 		t.Error("index missing GitHub link")
@@ -150,43 +167,61 @@ func TestAdminAuth(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("no auth status %d, want 401", rec.Code)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "id=\"login\"") {
+		t.Errorf("index without auth status %d, want 200 with login form", rec.Code)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/config", nil))
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("config no auth status %d, want 401", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(`{"password":"nope"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("bad login status %d, want 401", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(`{"password":"s3cret"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("login status %d, want 200", rec.Code)
+	}
+	cookies := rec.Result().Cookies()
+	if len(cookies) == 0 {
+		t.Fatal("login set no cookie")
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/config", nil)
+	req.AddCookie(cookies[0])
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("cookie auth status %d, want 200", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "s3cret") {
+		t.Error("admin token leaked in /api/config")
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/stats", nil)
 	req.SetBasicAuth("admin", "s3cret")
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
-		t.Errorf("good auth status %d, want 200", rec.Code)
+		t.Errorf("basic auth status %d, want 200", rec.Code)
 	}
 
-	req = httptest.NewRequest(http.MethodGet, "/", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/stats", nil)
 	req.SetBasicAuth("admin", "nope")
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("bad password status %d, want 401", rec.Code)
-	}
-
-	req = httptest.NewRequest(http.MethodGet, "/", nil)
-	req.SetBasicAuth("root", "s3cret")
-	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("wrong user status %d, want 401", rec.Code)
-	}
-
-	req = httptest.NewRequest(http.MethodGet, "/api/config", nil)
-	req.SetBasicAuth("admin", "s3cret")
-	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("config status %d", rec.Code)
-	}
-	if strings.Contains(rec.Body.String(), "s3cret") {
-		t.Error("admin token leaked in /api/config")
+		t.Errorf("bad basic status %d, want 401", rec.Code)
 	}
 }
 

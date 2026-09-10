@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Shinel 🧥</title>
+  <title>Shinel</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A7%A5%3C/text%3E%3C/svg%3E">
   <style>
     :root {
       --bg: #0f1419;
@@ -27,15 +28,21 @@
     }
     header {
       display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
+      flex-direction: column;
+      gap: 4px;
       padding: 14px 20px;
       border-bottom: 1px solid var(--border);
     }
-    .brand { display: flex; align-items: baseline; gap: 12px; }
+    header .top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
     header h1 { margin: 0; font-size: 18px; font-weight: 600; }
     header p { margin: 0; color: var(--muted); font-size: 13px; }
+    header .actions { display: flex; align-items: center; gap: 8px; }
+    .mark { font-size: 22px; line-height: 1; }
     .gh {
       color: var(--fg);
       display: flex;
@@ -125,19 +132,64 @@
     }
     .copy:hover { border-color: var(--muted); }
     .copy.ok { color: var(--accent); }
+    #out { display: none; }
+    #out.on { display: inline; }
+    #gate {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg);
+    }
+    #gate.on { display: flex; }
+    #gate form {
+      width: min(360px, calc(100vw - 32px));
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 24px;
+    }
+    #gate h2 { margin: 0 0 8px; font-size: 18px; }
+    #gate p { margin: 0 0 16px; color: var(--muted); }
+    #gate input {
+      width: 100%;
+      margin-bottom: 12px;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--fg);
+    }
+    #gate button {
+      width: 100%;
+      padding: 8px 10px;
+      border: 0;
+      border-radius: 6px;
+      background: var(--accent);
+      color: #0f1419;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    #loginerr { color: #f85149; min-height: 1.2em; margin: 8px 0 0; }
   </style>
 </head>
 <body>
   <header>
-    <div class="brand">
-      <h1>Shinel 🧥</h1>
-      <p>local dashboard — values here are unmasked</p>
+    <div class="top">
+      <h1>Shinel</h1>
+      <div class="actions">
+        <button type="button" id="out" class="copy">Sign out</button>
+        <a class="gh" href="https://github.com/ido177/shinel" target="_blank" rel="noopener noreferrer" aria-label="Shinel on GitHub">
+        <svg width="22" height="22" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8"/>
+        </svg>
+      </a>
+        <span class="mark" aria-hidden="true">🧥</span>
+      </div>
     </div>
-    <a class="gh" href="https://github.com/ido177/shinel" target="_blank" rel="noopener noreferrer" aria-label="Shinel on GitHub">
-      <svg width="22" height="22" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-        <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8"/>
-      </svg>
-    </a>
+    <p>local dashboard — values here are unmasked</p>
   </header>
   <div class="layout">
     <nav>
@@ -162,6 +214,15 @@
       </section>
     </main>
   </div>
+  <div id="gate">
+    <form id="login">
+      <h2>Shinel</h2>
+      <p>Dashboard password from <code>SHINEL_ADMIN_TOKEN</code></p>
+      <input id="pw" type="password" name="password" autocomplete="current-password" placeholder="Password" autofocus>
+      <button type="submit">Sign in</button>
+      <p id="loginerr"></p>
+    </form>
+  </div>
   <script>
     const $ = (id) => document.getElementById(id);
     document.querySelectorAll("nav button").forEach((btn) => {
@@ -173,16 +234,33 @@
       });
     });
 
-    const logbox = $("logbox");
-    logbox.textContent = "";
-    const es = new EventSource("/api/logs");
-    es.addEventListener("snapshot", () => { logbox.textContent = ""; });
-    es.onmessage = (ev) => {
-      const line = JSON.parse(ev.data);
-      logbox.appendChild(document.createTextNode(line + "\n"));
-      logbox.scrollTop = logbox.scrollHeight;
-    };
-    es.onerror = () => {};
+    let logs = null;
+    let statsTimer = 0;
+    let needsAuth = false;
+
+    function startLogs() {
+      if (logs) return;
+      const logbox = $("logbox");
+      logbox.textContent = "";
+      logs = new EventSource("/api/logs");
+      logs.addEventListener("snapshot", () => { logbox.textContent = ""; });
+      logs.onmessage = (ev) => {
+        const line = JSON.parse(ev.data);
+        logbox.appendChild(document.createTextNode(line + "\n"));
+        logbox.scrollTop = logbox.scrollHeight;
+      };
+      logs.onerror = () => {};
+    }
+
+    function showApp(authed) {
+      $("gate").classList.toggle("on", !authed);
+      $("out").classList.toggle("on", needsAuth && authed);
+      if (!authed) return;
+      startLogs();
+      loadConfig();
+      loadStats();
+      if (!statsTimer) statsTimer = setInterval(loadStats, 1000);
+    }
 
     function flatten(obj, prefix) {
       const out = [];
@@ -246,9 +324,41 @@
 
     async function loadConfig() {
       const r = await fetch("/api/config");
+      if (!r.ok) return;
       renderConfig(await r.json());
     }
-    loadConfig();
+
+    async function boot() {
+      const r = await fetch("/api/config");
+      needsAuth = r.status === 401;
+      showApp(r.ok);
+    }
+    boot();
+
+    $("login").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      $("loginerr").textContent = "";
+      const r = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: $("pw").value }),
+      });
+      if (!r.ok) {
+        $("loginerr").textContent = "Wrong password";
+        return;
+      }
+      $("pw").value = "";
+      showApp(true);
+    });
+    $("out").addEventListener("click", async () => {
+      await fetch("/api/logout", { method: "POST" });
+      if (logs) { logs.close(); logs = null; }
+      if (statsTimer) { clearInterval(statsTimer); statsTimer = 0; }
+      $("logbox").textContent = "";
+      $("cfg").replaceChildren();
+      $("recent").replaceChildren();
+      showApp(false);
+    });
 
     function renderStats(s) {
       $("nreq").textContent = s.requests;
@@ -297,10 +407,9 @@
     }
     async function loadStats() {
       const r = await fetch("/api/stats");
+      if (!r.ok) return;
       renderStats(await r.json());
     }
-    loadStats();
-    setInterval(loadStats, 1000);
   </script>
 </body>
 </html>

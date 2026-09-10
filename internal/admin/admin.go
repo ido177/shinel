@@ -1,7 +1,9 @@
 package admin
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
@@ -15,6 +17,8 @@ import (
 	"github.com/ido177/shinel/internal/stats"
 )
 
+const sessionCookie = "shinel_admin"
+
 // Handler serves the dashboard and JSON/SSE endpoints.
 type Handler struct {
 	cfg   *config.Config
@@ -27,25 +31,61 @@ func New(cfg *config.Config, st *stats.Store, logs *LogSink) http.Handler {
 	h := &Handler{cfg: cfg, stats: st, logs: logs, pages: uiFS}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", h.index)
-	mux.HandleFunc("GET /api/config", h.config)
-	mux.HandleFunc("GET /api/stats", h.snapshot)
-	mux.HandleFunc("GET /api/logs", h.streamLogs)
-	return basicAuth(cfg.Admin.Token, mux)
+	mux.HandleFunc("POST /api/login", h.login)
+	mux.HandleFunc("POST /api/logout", h.logout)
+	mux.HandleFunc("GET /api/config", h.auth(h.config))
+	mux.HandleFunc("GET /api/stats", h.auth(h.snapshot))
+	mux.HandleFunc("GET /api/logs", h.auth(h.streamLogs))
+	return mux
 }
 
-func basicAuth(token string, next http.Handler) http.Handler {
-	if token == "" {
-		return next
-	}
-	want := []byte(token)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		user, pass, ok := r.BasicAuth()
-		if !ok || user != "admin" || subtle.ConstantTimeCompare([]byte(pass), want) != 1 {
-			w.Header().Set("WWW-Authenticate", `Basic realm="shinel"`)
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
+func (h *Handler) auth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if authorized(r, h.cfg.Admin.Token) {
+			next(w, r)
 			return
 		}
-		next.ServeHTTP(w, r)
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	}
+}
+
+func authorized(r *http.Request, token string) bool {
+	if token == "" {
+		return true
+	}
+	if c, err := r.Cookie(sessionCookie); err == nil {
+		want := []byte(cookieValue(token))
+		if subtle.ConstantTimeCompare([]byte(c.Value), want) == 1 {
+			return true
+		}
+	}
+	user, pass, ok := r.BasicAuth()
+	return ok && user == "admin" && subtle.ConstantTimeCompare([]byte(pass), []byte(token)) == 1
+}
+
+func cookieValue(token string) string {
+	mac := hmac.New(sha256.New, []byte(token))
+	mac.Write([]byte("shinel-admin"))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+func setSession(w http.ResponseWriter, token string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookie,
+		Value:    cookieValue(token),
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func clearSession(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookie,
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
 	})
 }
 
@@ -83,6 +123,32 @@ func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write(b)
+}
+
+func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
+	if h.cfg.Admin.Token == "" {
+		writeJSON(w, map[string]string{"status": "ok"})
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1024)
+	var body struct {
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	if subtle.ConstantTimeCompare([]byte(body.Password), []byte(h.cfg.Admin.Token)) != 1 {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	setSession(w, h.cfg.Admin.Token)
+	writeJSON(w, map[string]string{"status": "ok"})
+}
+
+func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
+	clearSession(w)
+	writeJSON(w, map[string]string{"status": "ok"})
 }
 
 func (h *Handler) config(w http.ResponseWriter, r *http.Request) {
@@ -167,11 +233,11 @@ type view struct {
 func publicConfig(cfg *config.Config) view {
 	var v view
 	v.Server.Port = cfg.Server.Port
-	v.TargetURL = redactURL(cfg.TargetURL)
+	v.TargetURL = RedactURL(cfg.TargetURL)
 	v.CustomWords = cfg.CustomWords
 	v.Vault.Type = cfg.Vault.Type
-	v.Vault.RedisURL = redactURL(cfg.Vault.RedisURL)
-	v.MLEngine.URL = cfg.MLEngine.URL
+	v.Vault.RedisURL = RedactURL(cfg.Vault.RedisURL)
+	v.MLEngine.URL = RedactURL(cfg.MLEngine.URL)
 	v.MLEngine.Model = cfg.MLEngine.Model
 	v.MLEngine.Labels = cfg.MLEngine.Labels
 	v.MLEngine.TimeoutMS = cfg.MLEngine.TimeoutMS
@@ -180,7 +246,9 @@ func publicConfig(cfg *config.Config) view {
 	return v
 }
 
-func redactURL(raw string) string {
+// RedactURL strips userinfo and common secret query keys so logs and the
+// dashboard can show a URL.
+func RedactURL(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil {
 		return raw

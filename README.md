@@ -20,7 +20,7 @@ It intercepts traffic between your application (or AI agents) and the LLM API, l
   - **Custom Dictionaries:** Case-insensitive whole-word matching (Aho-Corasick) for internal project names or employee lists.
   - **Zero-Shot ML (GLiNER):** Optional Python sidecar for names, organizations, and custom labels. If the sidecar is down, regex and dictionary masking still run; names only the model would have caught can then leave the process.
 - 🔒 **100% Local & Self-Hosted:** Your sensitive data never leaves your infrastructure until it's masked.
-- 🖥️ **Local dashboard:** Live process logs, the loaded config, and recent mask mappings at `http://127.0.0.1:8081` (loopback is open; Docker prompts for HTTP basic `admin` / token).
+- 🖥️ **Local dashboard:** Live process logs, the loaded config, and recent mask mappings at `http://127.0.0.1:8081` (loopback is open; Docker asks for the dashboard password).
 
 ## 🏗️ How It Works
 
@@ -80,6 +80,47 @@ echo 'SHINEL_ADMIN_TOKEN=pick-a-long-secret' >> .env
 make up
 ```
 
-If `SHINEL_ADMIN_TOKEN` is unset, the proxy logs a generated one: `admin HTTP basic user=admin password=…`. Browser: [http://127.0.0.1:8081](http://127.0.0.1:8081), username `admin`, that password. `admin.port: 0` in yaml turns the UI off.
+If `SHINEL_ADMIN_TOKEN` is unset, the proxy logs a generated one: `admin dashboard password=…`. Open [http://127.0.0.1:8081](http://127.0.0.1:8081) and sign in with that password. `admin.port: 0` in yaml turns the UI off.
+
+## 🧪 Try it
+
+Point the OpenAI client at `http://127.0.0.1:8080/v1` (same paths, same `Authorization` header). A few smokes:
+
+```bash
+# models list — proxy is up if this is not connection-refused
+curl http://127.0.0.1:8080/v1/models \
+  -H "Authorization: Bearer $OPENAI_API_KEY"
+
+# chat: email, IPv4, and a name should be masked on the way out and restored in the reply
+curl http://127.0.0.1:8080/v1/chat/completions \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4o-mini",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Repeat these unchanged: ada@example.com, 8.8.8.8, Ivan Petrov"
+      }
+    ]
+  }'
+
+# same, streamed
+curl -N http://127.0.0.1:8080/v1/chat/completions \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4o-mini",
+    "stream": true,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Repeat these unchanged: ada@example.com, 8.8.8.8, Ivan Petrov"
+      }
+    ]
+  }'
+```
+
+Without a valid key OpenAI still returns 401, but Shinel has already masked the body — check the Stats tab. With a key, the model should echo the real values (unmasked on the way back), not `[EMAIL_1]` / `[IP_1]` / `[PERSON_1]`.
 
 ## 🤝 Contributions are always welcome!
