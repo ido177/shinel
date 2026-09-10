@@ -225,25 +225,35 @@ type view struct {
 		TimeoutMS int      `json:"timeout_ms"`
 	} `json:"ml_engine"`
 	Admin struct {
-		Port int    `json:"port"`
-		Bind string `json:"bind"`
+		Port   int    `json:"port"`
+		Bind   string `json:"bind"`
+		Redact bool   `json:"redact"`
 	} `json:"admin"`
 }
 
 func publicConfig(cfg *config.Config) view {
 	var v view
 	v.Server.Port = cfg.Server.Port
-	v.TargetURL = RedactURL(cfg.TargetURL)
+	v.TargetURL = DisplayURL(cfg.Admin.Redact, cfg.TargetURL)
 	v.CustomWords = cfg.CustomWords
 	v.Vault.Type = cfg.Vault.Type
-	v.Vault.RedisURL = RedactURL(cfg.Vault.RedisURL)
-	v.MLEngine.URL = RedactURL(cfg.MLEngine.URL)
+	v.Vault.RedisURL = DisplayURL(cfg.Admin.Redact, cfg.Vault.RedisURL)
+	v.MLEngine.URL = DisplayURL(cfg.Admin.Redact, cfg.MLEngine.URL)
 	v.MLEngine.Model = cfg.MLEngine.Model
 	v.MLEngine.Labels = cfg.MLEngine.Labels
 	v.MLEngine.TimeoutMS = cfg.MLEngine.TimeoutMS
 	v.Admin.Port = cfg.Admin.Port
 	v.Admin.Bind = cfg.Admin.Bind
+	v.Admin.Redact = cfg.Admin.Redact
 	return v
+}
+
+// DisplayURL returns raw when redact is off, otherwise RedactURL(raw).
+func DisplayURL(redact bool, raw string) string {
+	if !redact {
+		return raw
+	}
+	return RedactURL(raw)
 }
 
 // RedactURL strips userinfo and common secret query keys so logs and the

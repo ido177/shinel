@@ -27,9 +27,12 @@ type Config struct {
 type AdminConfig struct {
 	Port int    `yaml:"port"`
 	Bind string `yaml:"bind"`
-	// Token is HTTP Basic password for the dashboard (user "admin").
+	// Token is the dashboard password (user "admin" for HTTP basic).
 	// Required when Bind is not loopback; empty on 127.0.0.1 leaves the UI open.
 	Token string `yaml:"token"`
+	// Redact hides credentials in the dashboard config view and process logs.
+	// Mask mappings on the Stats tab are unaffected.
+	Redact bool `yaml:"redact"`
 }
 
 // MLEngineConfig points at the Python sidecar. An empty URL turns the model
@@ -71,8 +74,9 @@ func defaults() *Config {
 			TimeoutMS: 2000,
 		},
 		Admin: AdminConfig{
-			Port: 8081,
-			Bind: "127.0.0.1",
+			Port:   8081,
+			Bind:   "127.0.0.1",
+			Redact: true,
 		},
 	}
 	cfg.Server.Port = 8080

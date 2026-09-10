@@ -93,6 +93,28 @@ func TestLoadEmptyMLURLEnvLeavesFileValue(t *testing.T) {
 	}
 }
 
+func TestLoadAdminRedactDefaultTrue(t *testing.T) {
+	path := writeConfig(t, "admin:\n  port: 8081\n")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.Admin.Redact {
+		t.Fatal("Redact default is false, want true")
+	}
+}
+
+func TestLoadAdminRedactFalse(t *testing.T) {
+	path := writeConfig(t, "admin:\n  redact: false\n")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Admin.Redact {
+		t.Fatal("Redact = true, want false")
+	}
+}
+
 func TestMLEngineTimeoutZeroUsesDefault(t *testing.T) {
 	if got := (MLEngineConfig{TimeoutMS: 0}).Timeout(); got != 2*time.Second {
 		t.Errorf("Timeout(0) = %v, want 2s", got)

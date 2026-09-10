@@ -80,7 +80,7 @@ echo 'SHINEL_ADMIN_TOKEN=pick-a-long-secret' >> .env
 make up
 ```
 
-If `SHINEL_ADMIN_TOKEN` is unset, the proxy logs a generated one: `admin dashboard password=…`. Open [http://127.0.0.1:8081](http://127.0.0.1:8081) and sign in with that password. `admin.port: 0` in yaml turns the UI off.
+If `SHINEL_ADMIN_TOKEN` is unset, the proxy logs a generated one: `admin dashboard password=…`. Open [http://127.0.0.1:8081](http://127.0.0.1:8081) and sign in with that password. `admin.port: 0` in yaml turns the UI off. `admin.redact: false` shows credentials as-is in the Config tab and process logs (Stats mappings are always the real values).
 
 ## 🧪 Try it
 

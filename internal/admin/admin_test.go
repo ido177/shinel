@@ -30,6 +30,7 @@ func TestConfigRedactsRedisPassword(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := &config.Config{}
+			cfg.Admin.Redact = true
 			cfg.Vault.RedisURL = tc.redis
 			cfg.TargetURL = tc.target
 			rec := httptest.NewRecorder()
@@ -49,6 +50,32 @@ func TestRedactURL(t *testing.T) {
 	got := RedactURL("https://user:sk-live@api.example/v1?api_key=sk-live")
 	if strings.Contains(got, "sk-live") {
 		t.Errorf("leaked in %s", got)
+	}
+}
+
+func TestConfigShowsSecretsWhenRedactOff(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Admin.Redact = false
+	cfg.Vault.RedisURL = "redis://user:secret@localhost:6379/0"
+	cfg.TargetURL = "https://user:sk-live@api.example/v1"
+	rec := httptest.NewRecorder()
+	New(cfg, stats.New(10), NewLogSink(10)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/config", nil))
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
+	if !strings.Contains(body, "secret") || !strings.Contains(body, "sk-live") {
+		t.Errorf("redact off, want raw secrets in %s", body)
+	}
+}
+
+func TestDisplayURL(t *testing.T) {
+	raw := "https://user:sk-live@api.example/v1"
+	if got := DisplayURL(false, raw); got != raw {
+		t.Errorf("redact off = %q, want raw", got)
+	}
+	if got := DisplayURL(true, raw); strings.Contains(got, "sk-live") {
+		t.Errorf("redact on leaked in %s", got)
 	}
 }
 
