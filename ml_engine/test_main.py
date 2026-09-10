@@ -151,3 +151,28 @@ def test_engine_batches_same_labels():
         assert f2.result() == []
 
     assert set(recorded.get("texts", ())) == {"alpha", "beta"}
+
+
+def test_model_name_from_yaml(tmp_path, monkeypatch):
+    import settings
+
+    monkeypatch.delenv("SHINEL_ML_MODEL", raising=False)
+    p = tmp_path / "config.yaml"
+    p.write_text("ml_engine:\n  url: \"\"\n  model: org/from-yaml\n  timeout_ms: 1\n")
+    assert settings.model_name(str(p)) == "org/from-yaml"
+
+
+def test_model_name_env_overrides_yaml(tmp_path, monkeypatch):
+    import settings
+
+    p = tmp_path / "config.yaml"
+    p.write_text("ml_engine:\n  model: org/from-yaml\n")
+    monkeypatch.setenv("SHINEL_ML_MODEL", "org/from-env")
+    assert settings.model_name(str(p)) == "org/from-env"
+
+
+def test_model_name_missing_file_uses_default(monkeypatch):
+    import settings
+
+    monkeypatch.delenv("SHINEL_ML_MODEL", raising=False)
+    assert settings.model_name("/no/such/config.yaml") == settings.DEFAULT_MODEL

@@ -19,7 +19,7 @@ from typing import Any
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
-MODEL_NAME = "urchade/gliner_multi-v2.1"
+from settings import model_name
 
 log = logging.getLogger("ml_engine")
 
@@ -106,8 +106,9 @@ async def lifespan(app: FastAPI):
     global _model, _engine
     from gliner import GLiNER
 
-    log.info("loading %s", MODEL_NAME)
-    _model = GLiNER.from_pretrained(MODEL_NAME)
+    name = model_name()
+    log.info("loading %s", name)
+    _model = GLiNER.from_pretrained(name)
     _engine = InferenceEngine(
         _model,
         max_batch=int(os.environ.get("SHINEL_ML_BATCH", "8")),

@@ -18,8 +18,10 @@ custom_words: []
 ml_engine:
   url: ""
   # url: http://ml-engine:8000/analyze
+  # HuggingFace id the Python sidecar loads (and bakes into the image)
+  model: urchade/gliner_multi-v2.1
   labels:
     - PERSON
     - ORG
     - LOCATION
-  timeout_ms: 2000
+  timeout_ms: 15000
