@@ -4,14 +4,10 @@ TAG ?= latest
 PROXY_IMAGE := shinel-proxy
 ML_IMAGE := shinel-ml-engine
 
-# Dockerfile.go lives at the module root and is not a Go source file.
-# `./...` would try to compile it and fail on the leading '#'.
-GO_PACKAGES := ./cmd/... ./internal/...
-
 .PHONY: build up down test push
 
 build:
-	docker build -f Dockerfile.go -t $(PROXY_IMAGE):$(TAG) .
+	docker build -f Dockerfile.proxy -t $(PROXY_IMAGE):$(TAG) .
 	docker build -f Dockerfile.python -t $(ML_IMAGE):$(TAG) .
 
 up:
@@ -21,7 +17,7 @@ down:
 	docker compose down
 
 test:
-	go test -race $(GO_PACKAGES)
+	go test -race ./...
 	@if [ -x ml_engine/.venv/bin/python ]; then \
 		ml_engine/.venv/bin/python -m pytest -q ml_engine; \
 	else \

@@ -13,7 +13,7 @@ services:
   proxy:
     build:
       context: .
-      dockerfile: Dockerfile.go
+      dockerfile: Dockerfile.proxy
     image: shinel-proxy:latest
     ports:
       - "8080:8080"
