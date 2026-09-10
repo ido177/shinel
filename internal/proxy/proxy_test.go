@@ -278,3 +278,102 @@ func TestNewRejectsBadTarget(t *testing.T) {
 		}
 	}
 }
+
+func TestProxyLeavesJSONNumbersIntact(t *testing.T) {
+	up, upSrv := newUpstream(t, func(w http.ResponseWriter, body string) {
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, body)
+	})
+	px := newProxy(t, upSrv.URL, nil)
+
+	const sent = `{"amount":4111111111111111,"note":"alice@example.com"}`
+	resp := post(t, px.URL, sent)
+
+	got := up.received(t)
+	if !strings.Contains(got, "4111111111111111") {
+		t.Errorf("upstream lost the numeric amount: %q", got)
+	}
+	if strings.Contains(got, "alice@example.com") {
+		t.Errorf("upstream saw the email: %q", got)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if string(body) != sent {
+		t.Errorf("client\n got %q\nwant %q", body, sent)
+	}
+}
+
+func TestProxyDropsContentLengthOnSSE(t *testing.T) {
+	_, upSrv := newUpstream(t, func(w http.ResponseWriter, body string) {
+		payload := "data: [EMAIL_1]\n\n"
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+		w.WriteHeader(http.StatusOK)
+		io.WriteString(w, payload)
+	})
+	px := newProxy(t, upSrv.URL, nil)
+
+	resp := post(t, px.URL, `{"content":"alice@example.com"}`)
+	if got := resp.Header.Get("Content-Length"); got != "" {
+		t.Errorf("Content-Length = %q, want it dropped for SSE", got)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if want := "data: alice@example.com\n\n"; string(body) != want {
+		t.Errorf("got %q, want %q", body, want)
+	}
+}
+
+func TestProxyDropsOversizedRequest(t *testing.T) {
+	up, upSrv := newUpstream(t, func(w http.ResponseWriter, body string) {
+		io.WriteString(w, "ok")
+	})
+	h, err := New(&config.Config{TargetURL: upSrv.URL}, vault.NewInMemoryVault(), analyzer.New(nil, nil))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "http://shinel/", strings.NewReader(`{"content":"hi"}`))
+	req.ContentLength = maxBodyBytes + 1
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if got := up.received(t); got != "" {
+		t.Errorf("upstream got %q, want empty", got)
+	}
+}
+
+func TestDemaskReaderFlushesBeforeUpstreamError(t *testing.T) {
+	src := &errAfter{data: []byte("cut here [EMA"), err: io.ErrUnexpectedEOF}
+	d := newDemaskReader(src, vault.NewInMemoryVault(), reqID, t.Context())
+
+	got, err := io.ReadAll(d)
+	if string(got) != "cut here [EMA" {
+		t.Errorf("got %q, want the dangling candidate flushed", got)
+	}
+	if err != io.ErrUnexpectedEOF {
+		t.Errorf("err = %v, want ErrUnexpectedEOF", err)
+	}
+}
+
+// errAfter returns data and an error in one Read, then EOF.
+type errAfter struct {
+	data []byte
+	err  error
+	done bool
+}
+
+func (e *errAfter) Read(p []byte) (int, error) {
+	if e.done {
+		return 0, io.EOF
+	}
+	e.done = true
+	return copy(p, e.data), e.err
+}
+
+func (e *errAfter) Close() error { return nil }

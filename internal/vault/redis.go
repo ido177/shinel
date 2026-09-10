@@ -8,8 +8,8 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// RedisVault keeps mappings in Redis so several shinel instances can serve
-// halves of the same request.
+// RedisVault keeps mappings in Redis so several shinel instances can share
+// the same request-scoped tokens.
 type RedisVault struct {
 	client *redis.Client
 }
@@ -30,7 +30,7 @@ func (v *RedisVault) SaveMapping(ctx context.Context, reqID, token, realValue st
 }
 
 func (v *RedisVault) GetMapping(ctx context.Context, reqID, token string) (string, error) {
-	val, err := v.client.Get(ctx, key(reqID, token)).Result()
+	val, err := v.client.GetEx(ctx, key(reqID, token), ttl).Result()
 	if errors.Is(err, redis.Nil) {
 		return "", ErrNotFound
 	}

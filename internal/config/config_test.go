@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func writeConfig(t *testing.T, body string) string {
@@ -38,5 +39,17 @@ func TestLoadEmptyMLURLEnvLeavesFileValue(t *testing.T) {
 	}
 	if want := "http://from-file:8000/analyze"; cfg.MLEngine.URL != want {
 		t.Errorf("MLEngine.URL = %q, want %q", cfg.MLEngine.URL, want)
+	}
+}
+
+func TestMLEngineTimeoutZeroUsesDefault(t *testing.T) {
+	if got := (MLEngineConfig{TimeoutMS: 0}).Timeout(); got != 2*time.Second {
+		t.Errorf("Timeout(0) = %v, want 2s", got)
+	}
+	if got := (MLEngineConfig{TimeoutMS: -1}).Timeout(); got != 2*time.Second {
+		t.Errorf("Timeout(-1) = %v, want 2s", got)
+	}
+	if got := (MLEngineConfig{TimeoutMS: 500}).Timeout(); got != 500*time.Millisecond {
+		t.Errorf("Timeout(500) = %v, want 500ms", got)
 	}
 }

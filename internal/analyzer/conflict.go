@@ -72,7 +72,9 @@ func (e *AnalyzerEngine) collectML(ctx context.Context, text string) []span {
 
 	entities, err := e.ml.Analyze(ctx, text)
 	if err != nil {
-		// Masking still happened at the regex layer; log and carry on.
+		// Regex/dictionary masking still ran. Names only the model would have
+		// caught can now leave the process; a down sidecar must not take the
+		// proxy down with it.
 		log.Printf("analyzer: ml engine unavailable, continuing without it: %v", err)
 		return nil
 	}
@@ -88,6 +90,11 @@ func (e *AnalyzerEngine) collectML(ctx context.Context, text string) []span {
 		kind := sanitizeLabel(ent.Label)
 		if kind == "" {
 			log.Printf("analyzer: ml engine returned unusable label %q", ent.Label)
+			continue
+		}
+		got := text[start:end]
+		if ent.Entity != "" && got != ent.Entity {
+			log.Printf("analyzer: ml engine span %d..%d (%q) does not match entity %q", ent.Start, ent.End, got, ent.Entity)
 			continue
 		}
 		spans = append(spans, span{start, end, kind})

@@ -180,6 +180,7 @@ func TestAnonymizeRejectsOutOfRangeSpans(t *testing.T) {
 		{Entity: "x", Label: "PERSON", Start: 0, End: 999},
 		{Entity: "x", Label: "PERSON", Start: 999, End: 1000},
 		{Entity: "x", Label: "!!!", Start: 0, End: 4},
+		{Entity: "wrong", Label: "PERSON", Start: 0, End: 4},
 	}
 
 	for _, entity := range bad {

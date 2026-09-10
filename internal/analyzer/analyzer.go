@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/cloudflare/ahocorasick"
 )
@@ -66,38 +67,60 @@ type span struct {
 // map from token to the real value it stands for. Repeats of the same value
 // share one token.
 //
+// JSON bodies are walked as a tree: only string values are masked, so a
+// Luhn-valid number in `"amount": 4111…` stays a number. Anything that is not
+// a single JSON value is treated as opaque text.
+//
 // The regex and dictionary detectors run first, then the ML sidecar, which only
 // gets to claim text the deterministic layer left alone. An unreachable sidecar
-// is logged and skipped rather than failing the call.
+// is logged and skipped rather than failing the call: names the model would
+// have caught can then leave the process. That is intentional so a down
+// sidecar cannot take the proxy with it.
 func (e *AnalyzerEngine) Anonymize(ctx context.Context, text string) (string, map[string]string) {
+	if v, ok := parseJSON(text); ok {
+		return e.anonymizeJSON(ctx, v)
+	}
+	return e.anonymizeText(ctx, text, newSession())
+}
+
+type session struct {
+	mapping  map[string]string
+	tokenOf  map[string]string
+	counters map[string]int
+}
+
+func newSession() *session {
+	return &session{
+		mapping:  make(map[string]string),
+		tokenOf:  make(map[string]string),
+		counters: make(map[string]int),
+	}
+}
+
+func (e *AnalyzerEngine) anonymizeText(ctx context.Context, text string, sess *session) (string, map[string]string) {
 	spans := resolveConflicts(e.collect(text), e.collectML(ctx, text))
 	sortSpans(spans)
 
 	var b strings.Builder
-	mapping := make(map[string]string)
-	tokenOf := make(map[string]string)
-	counters := make(map[string]int)
 	last := 0
-
 	for _, s := range spans {
 		if s.start < last {
-			continue // overlaps a span we already took
+			continue
 		}
 		value := text[s.start:s.end]
-		token, ok := tokenOf[value]
+		token, ok := sess.tokenOf[value]
 		if !ok {
-			counters[s.kind]++
-			token = fmt.Sprintf("[%s_%d]", s.kind, counters[s.kind])
-			tokenOf[value] = token
-			mapping[token] = value
+			sess.counters[s.kind]++
+			token = fmt.Sprintf("[%s_%d]", s.kind, sess.counters[s.kind])
+			sess.tokenOf[value] = token
+			sess.mapping[token] = value
 		}
 		b.WriteString(text[last:s.start])
 		b.WriteString(token)
 		last = s.end
 	}
 	b.WriteString(text[last:])
-
-	return b.String(), mapping
+	return b.String(), sess.mapping
 }
 
 func (e *AnalyzerEngine) collect(text string) []span {
@@ -140,7 +163,10 @@ func (e *AnalyzerEngine) collectCustom(text string) []span {
 			}
 			start := off + j
 			end := start + len(word)
-			spans = append(spans, span{origOf[start], origOf[end], "CUSTOM"})
+			origStart, origEnd := origOf[start], origOf[end]
+			if wordBounded(text, origStart, origEnd) {
+				spans = append(spans, span{origStart, origEnd, "CUSTOM"})
+			}
 			off = end
 		}
 	}
@@ -167,6 +193,26 @@ func foldForMatch(s string) (string, []int) {
 func foldString(s string) string {
 	folded, _ := foldForMatch(s)
 	return folded
+}
+
+func wordBounded(text string, start, end int) bool {
+	if start > 0 {
+		r, _ := utf8.DecodeLastRuneInString(text[:start])
+		if isWordChar(r) {
+			return false
+		}
+	}
+	if end < len(text) {
+		r, _ := utf8.DecodeRuneInString(text[end:])
+		if isWordChar(r) {
+			return false
+		}
+	}
+	return true
+}
+
+func isWordChar(r rune) bool {
+	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_'
 }
 
 // sortSpans orders spans leftmost-longest, so that the sweep in Anonymize keeps

@@ -21,7 +21,8 @@ type Vault interface {
 // ErrNotFound is returned when a mapping is absent or has expired.
 var ErrNotFound = errors.New("vault: mapping not found")
 
-// ttl bounds how long a mapping survives; a request is done well before that.
+// ttl is the idle lifetime of a mapping. GetMapping refreshes it so a long
+// streaming response cannot outlive the values it still needs to restore.
 const ttl = 5 * time.Minute
 
 func key(reqID, token string) string {

@@ -34,6 +34,9 @@ type MLEngineClient struct {
 // NewMLEngineClient builds a client bounded by timeout, so a wedged sidecar
 // delays a request by at most that long instead of hanging the proxy.
 func NewMLEngineClient(url string, labels []string, timeout time.Duration) *MLEngineClient {
+	if timeout <= 0 {
+		timeout = 2 * time.Second
+	}
 	return &MLEngineClient{
 		url:    url,
 		labels: labels,

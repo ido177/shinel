@@ -33,6 +33,9 @@ type MLEngineConfig struct {
 
 // Timeout is TimeoutMS as a duration.
 func (m MLEngineConfig) Timeout() time.Duration {
+	if m.TimeoutMS <= 0 {
+		return 2 * time.Second
+	}
 	return time.Duration(m.TimeoutMS) * time.Millisecond
 }
 

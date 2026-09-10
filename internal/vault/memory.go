@@ -37,5 +37,6 @@ func (v *InMemoryVault) GetMapping(ctx context.Context, reqID, token string) (st
 	if !ok {
 		return "", ErrNotFound
 	}
+	v.c.Set(key(reqID, token), s, cache.DefaultExpiration)
 	return s, nil
 }

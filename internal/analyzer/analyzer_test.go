@@ -91,10 +91,25 @@ func TestAnonymize(t *testing.T) {
 			want:   "[CUSTOM_1], [EMAIL_1], [IP_1], [CARD_1]",
 		},
 		{
-			name:   "empty dictionary entry is ignored",
-			custom: []string{""},
-			in:     "nothing to mask",
-			want:   "nothing to mask",
+			name:   "custom word is a whole word, not a substring",
+			custom: []string{"Inc"},
+			in:     "Include Inc.",
+			want:   "Include [CUSTOM_1].",
+		},
+		{
+			name: "json number is not turned into a token",
+			in:   `{"amount":4111111111111111,"note":"alice@example.com"}`,
+			want: `{"amount":4111111111111111,"note":"[EMAIL_1]"}`,
+		},
+		{
+			name: "bare json number is left alone",
+			in:   `4111111111111111`,
+			want: `4111111111111111`,
+		},
+		{
+			name: "json strings share one token counter",
+			in:   `{"a":"a@x.com","b":"b@x.com"}`,
+			want: `{"a":"[EMAIL_1]","b":"[EMAIL_2]"}`,
 		},
 		{
 			name: "no matches",

@@ -47,11 +47,12 @@ func demask(body []byte, v vault.Vault, reqID string, ctx context.Context) []byt
 // only as far as needed to produce output, so events reach the client as they
 // arrive rather than at the end of the response.
 type demaskReader struct {
-	src   io.ReadCloser
-	sink  *bufferSink
-	w     *StreamingResponseWriter
-	chunk []byte
-	drain bool // upstream is exhausted; only the sink is left to serve
+	src     io.ReadCloser
+	sink    *bufferSink
+	w       *StreamingResponseWriter
+	chunk   []byte
+	drain   bool  // upstream is exhausted; only the sink is left to serve
+	readErr error // sticky non-EOF from upstream, returned after the sink drains
 }
 
 func newDemaskReader(src io.ReadCloser, v vault.Vault, reqID string, ctx context.Context) *demaskReader {
@@ -69,6 +70,11 @@ func (d *demaskReader) Read(p []byte) (int, error) {
 	// pulling until there is something to hand back or upstream is done.
 	for d.sink.buf.Len() == 0 {
 		if d.drain {
+			if d.readErr != nil {
+				err := d.readErr
+				d.readErr = nil
+				return 0, err
+			}
 			return 0, io.EOF
 		}
 
@@ -85,7 +91,7 @@ func (d *demaskReader) Read(p []byte) (int, error) {
 				return 0, cerr
 			}
 			if err != io.EOF {
-				return 0, err
+				d.readErr = err
 			}
 		}
 	}

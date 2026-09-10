@@ -19,6 +19,10 @@ import (
 	"github.com/ido177/shinel/internal/vault"
 )
 
+// maxBodyBytes is how much of a request or non-stream response we will hold
+// in memory. A larger body is dropped rather than forwarded unmasked.
+const maxBodyBytes = 16 << 20
+
 // reqIDKey carries the per-request vault scope from the handler down to the
 // director and the response rewriter. A context value rather than a header, so
 // the id is never sent upstream.
@@ -82,13 +86,22 @@ func maskRequest(req *http.Request, v vault.Vault, a *analyzer.AnalyzerEngine) {
 	if req.Body == nil || req.ContentLength == 0 {
 		return
 	}
+	if req.ContentLength > maxBodyBytes {
+		log.Printf("proxy: request body %d bytes exceeds %d, dropping it", req.ContentLength, maxBodyBytes)
+		req.Body.Close()
+		setBody(req, nil)
+		return
+	}
 
-	body, err := io.ReadAll(req.Body)
+	body, err := io.ReadAll(io.LimitReader(req.Body, maxBodyBytes+1))
 	req.Body.Close()
 	if err != nil {
-		// The body is already partly consumed and cannot be replayed. Send
-		// nothing rather than risk forwarding an unmasked remainder.
 		log.Printf("proxy: read request body: %v", err)
+		setBody(req, nil)
+		return
+	}
+	if int64(len(body)) > maxBodyBytes {
+		log.Printf("proxy: request body exceeds %d bytes, dropping it", maxBodyBytes)
 		setBody(req, nil)
 		return
 	}
@@ -122,14 +135,23 @@ func restoreResponse(resp *http.Response, v vault.Vault) error {
 	reqID := reqIDFrom(ctx)
 
 	if isEventStream(resp.Header.Get("Content-Type")) {
+		resp.Header.Del("Content-Length")
+		resp.ContentLength = -1
 		resp.Body = newDemaskReader(resp.Body, v, reqID, ctx)
 		return nil
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	if resp.ContentLength > maxBodyBytes {
+		return fmt.Errorf("proxy: response body %d bytes exceeds %d", resp.ContentLength, maxBodyBytes)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes+1))
 	resp.Body.Close()
 	if err != nil {
 		return fmt.Errorf("proxy: read response body: %w", err)
+	}
+	if int64(len(body)) > maxBodyBytes {
+		return fmt.Errorf("proxy: response body exceeds %d bytes", maxBodyBytes)
 	}
 
 	restored := demask(body, v, reqID, ctx)
