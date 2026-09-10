@@ -22,7 +22,9 @@ build:
 	fi
 
 up:
-	@set -a; [ -f .env ] && . ./.env; set +a; docker compose up -d
+	@set -a; [ -f .env ] && . ./.env; set +a; \
+	export HF_TOKEN="$${HF_TOKEN-}"; \
+	docker compose up -d
 
 down:
 	docker compose down
@@ -37,6 +39,7 @@ test:
 
 itest:
 	@set -a; [ -f .env ] && . ./.env; set +a; \
+	export HF_TOKEN="$${HF_TOKEN-}"; \
 	if [ -z "$$HF_TOKEN" ]; then \
 		echo "HF_TOKEN is empty. Put HF_TOKEN=hf_... in .env (gitignored) and retry."; \
 		exit 1; \

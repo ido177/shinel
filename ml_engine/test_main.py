@@ -163,6 +163,29 @@ def test_model_name_from_yaml(tmp_path, monkeypatch):
     assert settings.model_name(str(p)) == "org/from-yaml"
 
 
+def test_model_name_nested_model_key_does_not_win(tmp_path, monkeypatch):
+    import settings
+
+    monkeypatch.delenv("SHINEL_ML_MODEL", raising=False)
+    p = tmp_path / "config.yaml"
+    p.write_text(
+        "ml_engine:\n"
+        "  tokenizer:\n"
+        "    model: org/nested\n"
+        "  model: org/real\n"
+    )
+    assert settings.model_name(str(p)) == "org/real"
+
+
+def test_model_name_quoted_hash_and_spaced_key(tmp_path, monkeypatch):
+    import settings
+
+    monkeypatch.delenv("SHINEL_ML_MODEL", raising=False)
+    p = tmp_path / "config.yaml"
+    p.write_text('ml_engine:\n  model : "org/foo#bar"\n')
+    assert settings.model_name(str(p)) == "org/foo#bar"
+
+
 def test_model_name_env_overrides_yaml(tmp_path, monkeypatch):
     import settings
 

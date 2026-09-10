@@ -1,6 +1,7 @@
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
 pydantic>=2.9.0
+pyyaml>=6.0.2
 gliner>=0.2.16
 # mDeBERTa tokenizer (gliner_multi) needs these; transformers will otherwise
 # fall through to tiktoken and crash the image bake.

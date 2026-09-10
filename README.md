@@ -57,6 +57,6 @@ make up      # proxy on :8080, sidecar on the internal network
 make down
 ```
 
-`make itest` rebuilds the same ML image, so it needs the token too. After a failed or anonymous bake, rebuild so Docker does not reuse that layer (`make build` is enough when `Dockerfile.python` or `requirements.txt` changed).
+`make itest` rebuilds the same ML image, so it needs a non-empty token. `make up` exports `HF_TOKEN` even when empty so Compose does not abort; an empty secret is the same anonymous bake as `Dockerfile.python` (`required=false`). After a failed or anonymous bake, rebuild so Docker does not reuse that layer (`make build` is enough when `Dockerfile.python` or `requirements.txt` changed).
 
 ## 🤝 Contributions are always welcome!

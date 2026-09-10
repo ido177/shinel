@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 
+import yaml
+
 DEFAULT_MODEL = "urchade/gliner_multi-v2.1"
 _BUILD_SECRET = "/run/secrets/hf_token"
 
@@ -49,26 +51,16 @@ def _config_paths() -> list[str]:
 
 def _model_from_yaml(path: str) -> str:
     try:
-        lines = open(path, encoding="utf-8").read().splitlines()
-    except OSError:
+        with open(path, encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+    except (OSError, yaml.YAMLError):
         return ""
-    in_ml = False
-    for line in lines:
-        stripped = line.split("#", 1)[0].rstrip()
-        if not stripped.strip():
-            continue
-        indent = len(stripped) - len(stripped.lstrip(" "))
-        keyval = stripped.strip()
-        if indent == 0:
-            in_ml = keyval == "ml_engine:" or keyval.startswith("ml_engine:")
-            continue
-        if in_ml and keyval.startswith("model:"):
-            return _scalar(keyval[len("model:") :])
-    return ""
-
-
-def _scalar(raw: str) -> str:
-    s = raw.strip()
-    if len(s) >= 2 and s[0] == s[-1] and s[0] in "\"'":
-        return s[1:-1]
-    return s
+    if not isinstance(data, dict):
+        return ""
+    ml = data.get("ml_engine")
+    if not isinstance(ml, dict):
+        return ""
+    name = ml.get("model")
+    if not isinstance(name, str):
+        return ""
+    return name.strip()

@@ -82,8 +82,36 @@ func TestSSERestoresAndDropsContentLength(t *testing.T) {
 }
 
 func TestGLiNERModelFromConfig(t *testing.T) {
-	// Direct sidecar call: proves the image loaded the yaml model, not a stub.
+	// Direct sidecar call only proves the image loaded a real model.
+	// Masking is a second GLiNER round-trip with conflict filtering, so the
+	// entities from this call are not what the proxy must have removed.
 	const text = "Ivan Petrov wrote to Alice."
+	if n := analyzeCount(t, text); n == 0 {
+		t.Fatalf("model from config returned no entities for %q", text)
+	}
+
+	payload := `{"content":"` + text + `"}`
+	presp := postRetry(t, proxyURL(t)+"/", payload)
+	defer presp.Body.Close()
+	last := getLast(t)
+	if !strings.Contains(last, "[PERSON_") {
+		t.Errorf("proxy sent no PERSON token to upstream: %q", last)
+	}
+	if strings.Contains(last, "Ivan Petrov") {
+		t.Errorf("upstream still has Ivan Petrov in %q", last)
+	}
+
+	got, err := io.ReadAll(presp.Body)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if !strings.Contains(string(got), text) {
+		t.Errorf("client lost the original text:\n got %q\nwant substring %q", got, text)
+	}
+}
+
+func analyzeCount(t *testing.T, text string) int {
+	t.Helper()
 	body, _ := json.Marshal(map[string]any{
 		"text":   text,
 		"labels": []string{"PERSON", "ORG", "LOCATION"},
@@ -107,27 +135,7 @@ func TestGLiNERModelFromConfig(t *testing.T) {
 	if err := json.Unmarshal(raw, &entities); err != nil {
 		t.Fatalf("decode %s: %v", raw, err)
 	}
-	if len(entities) == 0 {
-		t.Fatalf("model from config returned no entities for %q (sidecar=%s)", text, raw)
-	}
-
-	payload := `{"content":"` + text + `"}`
-	presp := postRetry(t, proxyURL(t)+"/", payload)
-	defer presp.Body.Close()
-	last := getLast(t)
-	for _, e := range entities {
-		if e.Entity != "" && strings.Contains(last, e.Entity) {
-			t.Errorf("upstream still has %q (%s) in %q", e.Entity, e.Label, last)
-		}
-	}
-
-	got, err := io.ReadAll(presp.Body)
-	if err != nil {
-		t.Fatalf("read: %v", err)
-	}
-	if !strings.Contains(string(got), text) {
-		t.Errorf("client lost the original text:\n got %q\nwant substring %q", got, text)
-	}
+	return len(entities)
 }
 
 func proxyURL(t *testing.T) string    { return mustEnv(t, "PROXY_URL") }

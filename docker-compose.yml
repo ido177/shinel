@@ -39,7 +39,9 @@ networks:
   shinel-net:
 
 # Build-only: the running container does not get this. Compose reads HF_TOKEN
-# from the environment or a project `.env` file.
+# from the environment or a project `.env` file. An empty value is anonymous
+# bake (same as Dockerfile required=false); `make up` always exports the var
+# so Compose does not fail when it is unset.
 secrets:
   hf_token:
     environment: HF_TOKEN

@@ -71,4 +71,5 @@ networks:
 
 secrets:
   hf_token:
+    # Empty is anonymous bake; Make exports HF_TOKEN= so the var is never unset.
     environment: HF_TOKEN
