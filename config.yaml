@@ -14,6 +14,13 @@ custom_words: []
 #  - Acme Corporation
 #  - Project Bluebird
 
+# local dashboard: logs, config, mask stats. Shows real values.
+# bind 127.0.0.1 is open on the host; any other bind needs admin.token
+# (or SHINEL_ADMIN_TOKEN). Docker compose generates one if unset.
+admin:
+  port: 8081
+  bind: 127.0.0.1
+
 # named entity sidecar; leave url empty to run without it
 ml_engine:
   url: ""

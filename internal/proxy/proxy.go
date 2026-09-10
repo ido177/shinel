@@ -33,9 +33,28 @@ func reqIDFrom(ctx context.Context) string {
 	return id
 }
 
+// Recorder notes one outbound request and the token mapping produced for it.
+// A nil Recorder is ignored.
+type Recorder interface {
+	Record(method, path string, mapping map[string]string)
+}
+
+type options struct {
+	rec Recorder
+}
+
+// WithRecorder attaches request stats to the proxy.
+func WithRecorder(r Recorder) func(*options) {
+	return func(o *options) { o.rec = r }
+}
+
 // New builds the reverse proxy: requests are masked on the way to the upstream
 // API and restored on the way back.
-func New(cfg *config.Config, v vault.Vault, a *analyzer.AnalyzerEngine) (http.Handler, error) {
+func New(cfg *config.Config, v vault.Vault, a *analyzer.AnalyzerEngine, opts ...func(*options)) (http.Handler, error) {
+	o := options{}
+	for _, opt := range opts {
+		opt(&o)
+	}
 	target, err := url.Parse(cfg.TargetURL)
 	if err != nil {
 		return nil, fmt.Errorf("proxy: bad target url: %w", err)
@@ -55,7 +74,7 @@ func New(cfg *config.Config, v vault.Vault, a *analyzer.AnalyzerEngine) (http.Ha
 		// transparently decodes it, which keeps response bodies maskable.
 		req.Header.Del("Accept-Encoding")
 
-		maskRequest(req, v, a)
+		maskRequest(req, v, a, o.rec)
 	}
 	rp.ModifyResponse = func(resp *http.Response) error {
 		return restoreResponse(resp, v)
@@ -82,7 +101,14 @@ func withRequestID(next http.Handler) http.Handler {
 // Director cannot report an error, so every failure here has to fail safe:
 // whatever happens, the body that goes upstream is never less masked than what
 // we managed to produce.
-func maskRequest(req *http.Request, v vault.Vault, a *analyzer.AnalyzerEngine) {
+func maskRequest(req *http.Request, v vault.Vault, a *analyzer.AnalyzerEngine, rec Recorder) {
+	var mapping map[string]string
+	defer func() {
+		if rec != nil {
+			rec.Record(req.Method, req.URL.Path, mapping)
+		}
+	}()
+
 	if req.Body == nil || req.ContentLength == 0 {
 		return
 	}

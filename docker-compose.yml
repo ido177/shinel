@@ -23,8 +23,11 @@ services:
     image: shinel-proxy:latest
     ports:
       - "8080:8080"
+      - "127.0.0.1:8081:8081"
     environment:
       SHINEL_ML_URL: http://ml-engine:8000/analyze
+      SHINEL_ADMIN_BIND: "0.0.0.0"
+      SHINEL_ADMIN_TOKEN: ${SHINEL_ADMIN_TOKEN:-}
     volumes:
       - ./config.yaml:/etc/shinel/config.yaml:ro
     depends_on:

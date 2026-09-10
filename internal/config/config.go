@@ -19,6 +19,17 @@ type Config struct {
 	// entity detectors.
 	CustomWords []string       `yaml:"custom_words"`
 	MLEngine    MLEngineConfig `yaml:"ml_engine"`
+	Admin       AdminConfig    `yaml:"admin"`
+}
+
+// AdminConfig is the local dashboard. It shows logs, the loaded config, and
+// recent mask mappings, so it binds to loopback by default.
+type AdminConfig struct {
+	Port int    `yaml:"port"`
+	Bind string `yaml:"bind"`
+	// Token is HTTP Basic password for the dashboard (user "admin").
+	// Required when Bind is not loopback; empty on 127.0.0.1 leaves the UI open.
+	Token string `yaml:"token"`
 }
 
 // MLEngineConfig points at the Python sidecar. An empty URL turns the model
@@ -59,6 +70,10 @@ func defaults() *Config {
 			Labels:    []string{"PERSON", "ORG", "LOCATION"},
 			TimeoutMS: 2000,
 		},
+		Admin: AdminConfig{
+			Port: 8081,
+			Bind: "127.0.0.1",
+		},
 	}
 	cfg.Server.Port = 8080
 	return cfg
@@ -84,6 +99,12 @@ func Load(path string) (*Config, error) {
 	}
 	if url := os.Getenv("SHINEL_TARGET_URL"); url != "" {
 		cfg.TargetURL = url
+	}
+	if bind := os.Getenv("SHINEL_ADMIN_BIND"); bind != "" {
+		cfg.Admin.Bind = bind
+	}
+	if tok := os.Getenv("SHINEL_ADMIN_TOKEN"); tok != "" {
+		cfg.Admin.Token = tok
 	}
 	return cfg, nil
 }

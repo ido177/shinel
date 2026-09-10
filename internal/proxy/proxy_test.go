@@ -115,6 +115,37 @@ func TestProxyMasksRequestAndRestoresJSONResponse(t *testing.T) {
 	}
 }
 
+func TestProxyRecordsMasking(t *testing.T) {
+	_, upSrv := newUpstream(t, func(w http.ResponseWriter, body string) {
+		io.WriteString(w, body)
+	})
+	rec := &testRecorder{}
+	h, err := New(&config.Config{TargetURL: upSrv.URL}, vault.NewInMemoryVault(), analyzer.New(nil, nil), WithRecorder(rec))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+
+	post(t, srv.URL, `{"content":"mail alice@example.com"}`)
+	if rec.n != 1 {
+		t.Fatalf("recorded %d requests, want 1", rec.n)
+	}
+	if rec.m["[EMAIL_1]"] != "alice@example.com" {
+		t.Errorf("mapping = %v", rec.m)
+	}
+}
+
+type testRecorder struct {
+	n int
+	m map[string]string
+}
+
+func (r *testRecorder) Record(method, path string, mapping map[string]string) {
+	r.n++
+	r.m = mapping
+}
+
 func TestProxyRestoresEventStream(t *testing.T) {
 	// Emit the token one byte per event so it can only come back whole if the
 	// sliding window survives across chunks.

@@ -20,6 +20,7 @@ It intercepts traffic between your application (or AI agents) and the LLM API, l
   - **Custom Dictionaries:** Case-insensitive whole-word matching (Aho-Corasick) for internal project names or employee lists.
   - **Zero-Shot ML (GLiNER):** Optional Python sidecar for names, organizations, and custom labels. If the sidecar is down, regex and dictionary masking still run; names only the model would have caught can then leave the process.
 - 🔒 **100% Local & Self-Hosted:** Your sensitive data never leaves your infrastructure until it's masked.
+- 🖥️ **Local dashboard:** Live process logs, the loaded config, and recent mask mappings at `http://127.0.0.1:8081` (loopback is open; Docker prompts for HTTP basic `admin` / token).
 
 ## 🏗️ How It Works
 
@@ -53,10 +54,32 @@ The bake log must contain `huggingface: authenticated`. If you see `huggingface:
 
 ```bash
 make build   # shinel-proxy + shinel-ml-engine
-make up      # proxy on :8080, sidecar on the internal network
+make up      # proxy on :8080, dashboard on 127.0.0.1:8081, sidecar on the internal network
 make down
 ```
 
 `make itest` rebuilds the same ML image, so it needs a non-empty token. `make up` exports `HF_TOKEN` even when empty so Compose does not abort; an empty secret is the same anonymous bake as `Dockerfile.python` (`required=false`). After a failed or anonymous bake, rebuild so Docker does not reuse that layer (`make build` is enough when `Dockerfile.python` or `requirements.txt` changed).
+
+## 🖥️ Dashboard
+
+The UI is a second HTTP server (default `127.0.0.1:8081`), not a path on the LLM proxy.
+
+**Laptop (`go run` / local binary)** — `config.yaml` already binds loopback, no password:
+
+```bash
+go run ./cmd/shinel -config config.yaml
+```
+
+Open [http://127.0.0.1:8081](http://127.0.0.1:8081). Proxy stays on `:8080`.
+
+**Docker** — compose publishes `127.0.0.1:8081` and binds `0.0.0.0` inside the container, so a password is required (sibling containers on `shinel-net` must not scrape unmasked stats).
+
+```bash
+# optional: pin the password in gitignored .env
+echo 'SHINEL_ADMIN_TOKEN=pick-a-long-secret' >> .env
+make up
+```
+
+If `SHINEL_ADMIN_TOKEN` is unset, the proxy logs a generated one: `admin HTTP basic user=admin password=…`. Browser: [http://127.0.0.1:8081](http://127.0.0.1:8081), username `admin`, that password. `admin.port: 0` in yaml turns the UI off.
 
 ## 🤝 Contributions are always welcome!
