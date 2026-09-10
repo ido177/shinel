@@ -15,7 +15,7 @@ func newTestVault(t *testing.T, mappings map[string]string) vault.Vault {
 	t.Helper()
 	v := vault.NewInMemoryVault()
 	for token, value := range mappings {
-		if err := v.SaveMapping(reqID, token, value); err != nil {
+		if err := v.SaveMapping(t.Context(), reqID, token, value); err != nil {
 			t.Fatalf("SaveMapping: %v", err)
 		}
 	}
@@ -26,7 +26,7 @@ func newTestVault(t *testing.T, mappings map[string]string) vault.Vault {
 func stream(t *testing.T, v vault.Vault, chunks []string) string {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	s := NewStreamingResponseWriter(rec, v, reqID)
+	s := NewStreamingResponseWriter(rec, v, reqID, t.Context())
 	for _, c := range chunks {
 		n, err := s.Write([]byte(c))
 		if err != nil {
@@ -171,7 +171,7 @@ func TestWrite(t *testing.T) {
 // streaming stalls until the response ends.
 func TestWriteDoesNotStallPlainText(t *testing.T) {
 	rec := httptest.NewRecorder()
-	s := NewStreamingResponseWriter(rec, newTestVault(t, nil), reqID)
+	s := NewStreamingResponseWriter(rec, newTestVault(t, nil), reqID, t.Context())
 
 	if _, err := s.Write([]byte("hello")); err != nil {
 		t.Fatalf("Write: %v", err)
@@ -192,7 +192,7 @@ func TestWriteDoesNotStallPlainText(t *testing.T) {
 // and released mid-write, not held until Close.
 func TestWriteCapsCandidateLength(t *testing.T) {
 	rec := httptest.NewRecorder()
-	s := NewStreamingResponseWriter(rec, newTestVault(t, nil), reqID)
+	s := NewStreamingResponseWriter(rec, newTestVault(t, nil), reqID, t.Context())
 
 	run := "[" + strings.Repeat("A", maxTokenLen*2)
 	if _, err := s.Write([]byte(run)); err != nil {
@@ -217,7 +217,7 @@ func TestWriteCapsCandidateLength(t *testing.T) {
 func TestFlushKeepsCandidateBuffered(t *testing.T) {
 	v := newTestVault(t, map[string]string{"[EMAIL_1]": "a@x.com"})
 	rec := httptest.NewRecorder()
-	s := NewStreamingResponseWriter(rec, v, reqID)
+	s := NewStreamingResponseWriter(rec, v, reqID, t.Context())
 
 	if _, err := s.Write([]byte("[EMAIL_")); err != nil {
 		t.Fatalf("Write: %v", err)
@@ -240,7 +240,7 @@ func TestFlushKeepsCandidateBuffered(t *testing.T) {
 
 func TestWriteHeaderDropsContentLength(t *testing.T) {
 	rec := httptest.NewRecorder()
-	s := NewStreamingResponseWriter(rec, newTestVault(t, nil), reqID)
+	s := NewStreamingResponseWriter(rec, newTestVault(t, nil), reqID, t.Context())
 
 	s.Header().Set("Content-Length", "42")
 	s.Header().Set("Content-Type", "text/event-stream")

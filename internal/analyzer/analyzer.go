@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/cloudflare/ahocorasick"
 )
@@ -33,17 +34,20 @@ type AnalyzerEngine struct {
 
 // New builds an engine that also masks every word in customWords. A nil ml
 // turns off the model layer, leaving the deterministic detectors on their own.
-//
-// ponytail: custom words are matched byte-exactly, so "John" does not match
-// "john". Upgrade path: fold case into a normalized copy of the text and keep
-// an offset map back to the original, or swap in a case-insensitive matcher.
+// Matching is case-insensitive: "John" in the dictionary also hits "john".
 func New(customWords []string, ml *MLEngineClient) *AnalyzerEngine {
+	seen := make(map[string]struct{}, len(customWords))
 	dict := make([]string, 0, len(customWords))
 	for _, w := range customWords {
-		// An empty pattern would spin forever in the strings.Index loop below.
-		if w != "" {
-			dict = append(dict, w)
+		folded := foldString(w)
+		if folded == "" {
+			continue
 		}
+		if _, ok := seen[folded]; ok {
+			continue
+		}
+		seen[folded] = struct{}{}
+		dict = append(dict, folded)
 	}
 	e := &AnalyzerEngine{dict: dict, ml: ml}
 	if len(dict) > 0 {
@@ -118,26 +122,51 @@ func (e *AnalyzerEngine) collect(text string) []span {
 }
 
 // collectCustom uses Aho-Corasick to learn which dictionary words occur at all,
-// then locates their occurrences. The matcher reports each word once and
-// without offsets, so the positions come from a scan per present word.
+// then locates their occurrences. Matching runs on a case-folded copy of the
+// text; origOf maps each folded byte back to the original so the masked slice
+// keeps the source spelling.
 func (e *AnalyzerEngine) collectCustom(text string) []span {
 	if e.matcher == nil {
 		return nil
 	}
+	folded, origOf := foldForMatch(text)
 	var spans []span
-	for _, i := range e.matcher.MatchThreadSafe([]byte(text)) {
+	for _, i := range e.matcher.MatchThreadSafe([]byte(folded)) {
 		word := e.dict[i]
 		for off := 0; ; {
-			j := strings.Index(text[off:], word)
+			j := strings.Index(folded[off:], word)
 			if j < 0 {
 				break
 			}
 			start := off + j
-			spans = append(spans, span{start, start + len(word), "CUSTOM"})
-			off = start + len(word)
+			end := start + len(word)
+			spans = append(spans, span{origOf[start], origOf[end], "CUSTOM"})
+			off = end
 		}
 	}
 	return spans
+}
+
+// foldForMatch lowercases s rune by rune and records, for every byte of the
+// folded string plus a sentinel at the end, the corresponding original offset.
+func foldForMatch(s string) (string, []int) {
+	var b strings.Builder
+	b.Grow(len(s))
+	origOf := make([]int, 0, len(s)+1)
+	for i, r := range s {
+		low := string(unicode.ToLower(r))
+		for range len(low) {
+			origOf = append(origOf, i)
+		}
+		b.WriteString(low)
+	}
+	origOf = append(origOf, len(s))
+	return b.String(), origOf
+}
+
+func foldString(s string) string {
+	folded, _ := foldForMatch(s)
+	return folded
 }
 
 // sortSpans orders spans leftmost-longest, so that the sweep in Anonymize keeps

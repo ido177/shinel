@@ -3,6 +3,7 @@
 package proxy
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log"
@@ -32,12 +33,16 @@ type StreamingResponseWriter struct {
 	f     http.Flusher
 	vault vault.Vault
 	reqID string
+	ctx   context.Context
 	buf   []byte
 	err   error
 }
 
-func NewStreamingResponseWriter(w http.ResponseWriter, v vault.Vault, reqID string) *StreamingResponseWriter {
-	s := &StreamingResponseWriter{w: w, vault: v, reqID: reqID}
+func NewStreamingResponseWriter(w http.ResponseWriter, v vault.Vault, reqID string, ctx context.Context) *StreamingResponseWriter {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	s := &StreamingResponseWriter{w: w, vault: v, reqID: reqID, ctx: ctx}
 	if f, ok := w.(http.Flusher); ok {
 		s.f = f
 	}
@@ -116,7 +121,7 @@ func (s *StreamingResponseWriter) release(out []byte) []byte {
 // resolve looks a complete token up in the vault. An unknown or expired token
 // is passed through untouched rather than treated as an error.
 func (s *StreamingResponseWriter) resolve(token []byte) []byte {
-	value, err := s.vault.GetMapping(s.reqID, string(token))
+	value, err := s.vault.GetMapping(s.ctx, s.reqID, string(token))
 	if err != nil {
 		if !errors.Is(err, vault.ErrNotFound) {
 			log.Printf("proxy: vault lookup for %s failed: %v", token, err)

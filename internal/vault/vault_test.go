@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"context"
 	"errors"
 	"os"
 	"testing"
@@ -11,11 +12,12 @@ import (
 // testVault is the contract every implementation must satisfy.
 func testVault(t *testing.T, v Vault) {
 	t.Helper()
+	ctx := t.Context()
 
-	if err := v.SaveMapping("req-1", "TOKEN_1", "alice@example.com"); err != nil {
+	if err := v.SaveMapping(ctx, "req-1", "TOKEN_1", "alice@example.com"); err != nil {
 		t.Fatalf("SaveMapping: %v", err)
 	}
-	got, err := v.GetMapping("req-1", "TOKEN_1")
+	got, err := v.GetMapping(ctx, "req-1", "TOKEN_1")
 	if err != nil {
 		t.Fatalf("GetMapping: %v", err)
 	}
@@ -23,15 +25,15 @@ func testVault(t *testing.T, v Vault) {
 		t.Errorf("GetMapping = %q, want %q", got, "alice@example.com")
 	}
 
-	if _, err := v.GetMapping("req-1", "MISSING"); !errors.Is(err, ErrNotFound) {
+	if _, err := v.GetMapping(ctx, "req-1", "MISSING"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("missing token: err = %v, want ErrNotFound", err)
 	}
 
 	// The same token in another request must not leak across.
-	if err := v.SaveMapping("req-2", "TOKEN_1", "bob@example.com"); err != nil {
+	if err := v.SaveMapping(ctx, "req-2", "TOKEN_1", "bob@example.com"); err != nil {
 		t.Fatalf("SaveMapping: %v", err)
 	}
-	got, err = v.GetMapping("req-1", "TOKEN_1")
+	got, err = v.GetMapping(ctx, "req-1", "TOKEN_1")
 	if err != nil {
 		t.Fatalf("GetMapping: %v", err)
 	}
@@ -61,5 +63,17 @@ func TestRedisVault(t *testing.T) {
 func TestNewUnknownType(t *testing.T) {
 	if _, err := New(config.VaultConfig{Type: "postgres"}); err == nil {
 		t.Error("New with unknown type: want error, got nil")
+	}
+}
+
+func TestInMemoryVaultHonorsCancel(t *testing.T) {
+	v := NewInMemoryVault()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := v.SaveMapping(ctx, "req-1", "TOKEN_1", "x"); !errors.Is(err, context.Canceled) {
+		t.Errorf("SaveMapping: err = %v, want context.Canceled", err)
+	}
+	if _, err := v.GetMapping(ctx, "req-1", "TOKEN_1"); !errors.Is(err, context.Canceled) {
+		t.Errorf("GetMapping: err = %v, want context.Canceled", err)
 	}
 }

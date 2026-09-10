@@ -6,6 +6,9 @@ is used without a context manager, which skips the lifespan that loads GLiNER,
 and a stub is installed in its place.
 """
 
+import threading
+from concurrent.futures import ThreadPoolExecutor
+
 import main
 from fastapi.testclient import TestClient
 
@@ -27,6 +30,8 @@ class StubModel:
 def install(entities):
     stub = StubModel(entities)
     main._model = stub
+    # max_wait=0 keeps these tests serial: the worker never waits for a batch.
+    main._engine = main.InferenceEngine(stub, max_batch=1, max_wait=0)
     return stub
 
 
@@ -79,6 +84,7 @@ def test_empty_text_skips_the_model():
 
 def test_unloaded_model_returns_no_entities():
     main._model = None
+    main._engine = None
 
     resp = client.post("/analyze", json={"text": "Иван", "labels": ["PERSON"]})
 
@@ -116,4 +122,32 @@ def test_health_reports_model_state():
     assert client.get("/health").json() == {"status": "ok"}
 
     main._model = None
+    main._engine = None
     assert client.get("/health").json() == {"status": "loading"}
+
+
+def test_engine_batches_same_labels():
+    recorded = {}
+
+    class Rec:
+        def batch_predict_entities(self, texts, labels, threshold=0.5):
+            recorded["texts"] = list(texts)
+            return [[] for _ in texts]
+
+        def predict_entities(self, *args, **kwargs):
+            raise AssertionError("single-text path should not run for a batch")
+
+    eng = main.InferenceEngine(Rec(), max_batch=8, max_wait=0.3)
+    barrier = threading.Barrier(2)
+
+    def go(text):
+        barrier.wait()
+        return eng.predict(text, ["PERSON"], 0.5)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        f1 = pool.submit(go, "alpha")
+        f2 = pool.submit(go, "beta")
+        assert f1.result() == []
+        assert f2.result() == []
+
+    assert set(recorded.get("texts", ())) == {"alpha", "beta"}

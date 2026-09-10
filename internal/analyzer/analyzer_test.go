@@ -41,6 +41,18 @@ func TestAnonymize(t *testing.T) {
 			want:   "the [CUSTOM_1] report",
 		},
 		{
+			name:   "custom word is case insensitive",
+			custom: []string{"Acme"},
+			in:     "the ACME report and acme too",
+			want:   "the [CUSTOM_1] report and [CUSTOM_2] too",
+		},
+		{
+			name:   "duplicate dictionary casing is one pattern",
+			custom: []string{"Acme", "ACME"},
+			in:     "Acme",
+			want:   "[CUSTOM_1]",
+		},
+		{
 			name: "bad luhn is left alone",
 			in:   "pay with 4111111111111112 now",
 			want: "pay with 4111111111111112 now",
@@ -143,4 +155,21 @@ func TestAnonymizeConcurrent(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+func TestOverlapIndex(t *testing.T) {
+	idx := newOverlapIndex([]span{{start: 0, end: 50, kind: "EMAIL"}, {start: 80, end: 90, kind: "IP"}})
+
+	if !idx.overlaps(span{start: 40, end: 60}) {
+		t.Error("guess overlapping the long early span should lose")
+	}
+	if idx.overlaps(span{start: 50, end: 60}) {
+		t.Error("touching at the boundary is not an overlap")
+	}
+	if !idx.overlaps(span{start: 85, end: 88}) {
+		t.Error("guess nested in the later span should lose")
+	}
+	if idx.overlaps(span{start: 60, end: 70}) {
+		t.Error("gap between trusted spans should be free for ML")
+	}
 }

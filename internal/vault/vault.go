@@ -3,6 +3,7 @@
 package vault
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -11,10 +12,10 @@ import (
 )
 
 // Vault maps a placeholder token back to the real value it replaced, scoped to
-// a single request.
+// a single request. ctx lets a cancelled client abort a Redis round-trip.
 type Vault interface {
-	SaveMapping(reqID, token, realValue string) error
-	GetMapping(reqID, token string) (string, error)
+	SaveMapping(ctx context.Context, reqID, token, realValue string) error
+	GetMapping(ctx context.Context, reqID, token string) (string, error)
 }
 
 // ErrNotFound is returned when a mapping is absent or has expired.

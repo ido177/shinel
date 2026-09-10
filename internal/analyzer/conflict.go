@@ -3,6 +3,7 @@ package analyzer
 import (
 	"context"
 	"log"
+	"sort"
 	"strings"
 )
 
@@ -14,31 +15,51 @@ import (
 // This is why the tiers cannot simply be concatenated: for "Иван Петров
 // ivan@x.com" the model returns one PERSON span covering the address too, and
 // being both leftmost and longest it would win and swallow the email.
-//
-// ponytail: overlap is a linear scan of the trusted layer per guess, O(n*m) on
-// the handful of spans one request produces. Upgrade path: binary search the
-// sorted trusted layer if a text ever carries thousands of spans.
 func resolveConflicts(sure, guess []span) []span {
 	if len(guess) == 0 {
 		return sure
 	}
 
+	index := newOverlapIndex(sure)
 	merged := sure
 	for _, g := range guess {
-		if !overlapsAny(sure, g) {
+		if !index.overlaps(g) {
 			merged = append(merged, g)
 		}
 	}
 	return merged
 }
 
-func overlapsAny(spans []span, s span) bool {
-	for _, other := range spans {
-		if s.start < other.end && other.start < s.end {
-			return true
+// overlapIndex answers "does this span overlap any trusted span?" in
+// O(log n) after an O(n log n) build. sure is copied so the caller's order is
+// left alone for the later leftmost-longest sweep.
+type overlapIndex struct {
+	sure   []span
+	maxEnd []int
+}
+
+func newOverlapIndex(sure []span) overlapIndex {
+	idx := make([]span, len(sure))
+	copy(idx, sure)
+	sort.Slice(idx, func(i, j int) bool { return idx[i].start < idx[j].start })
+	maxEnd := make([]int, len(idx))
+	for i, s := range idx {
+		maxEnd[i] = s.end
+		if i > 0 && maxEnd[i-1] > maxEnd[i] {
+			maxEnd[i] = maxEnd[i-1]
 		}
 	}
-	return false
+	return overlapIndex{sure: idx, maxEnd: maxEnd}
+}
+
+func (o overlapIndex) overlaps(g span) bool {
+	// Last trusted span that starts before g ends. Among those, if the
+	// furthest end crosses g.start, something overlaps.
+	i := sort.Search(len(o.sure), func(i int) bool { return o.sure[i].start >= g.end }) - 1
+	if i < 0 {
+		return false
+	}
+	return o.maxEnd[i] > g.start
 }
 
 // collectML turns the sidecar's findings into spans. Everything here treats the

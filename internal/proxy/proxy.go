@@ -96,7 +96,7 @@ func maskRequest(req *http.Request, v vault.Vault, a *analyzer.AnalyzerEngine) {
 	masked, mapping := a.Anonymize(req.Context(), string(body))
 	reqID := reqIDFrom(req.Context())
 	for token, value := range mapping {
-		if err := v.SaveMapping(reqID, token, value); err != nil {
+		if err := v.SaveMapping(req.Context(), reqID, token, value); err != nil {
 			// The masked text still goes out, it just will not be restored.
 			log.Printf("proxy: save mapping %s: %v", token, err)
 		}
@@ -118,10 +118,11 @@ func setBody(req *http.Request, body []byte) {
 // chunk by chunk so the client keeps receiving events as they arrive; anything
 // else is rewritten in one go, which lets us keep an accurate Content-Length.
 func restoreResponse(resp *http.Response, v vault.Vault) error {
-	reqID := reqIDFrom(resp.Request.Context())
+	ctx := resp.Request.Context()
+	reqID := reqIDFrom(ctx)
 
 	if isEventStream(resp.Header.Get("Content-Type")) {
-		resp.Body = newDemaskReader(resp.Body, v, reqID)
+		resp.Body = newDemaskReader(resp.Body, v, reqID, ctx)
 		return nil
 	}
 
@@ -131,7 +132,7 @@ func restoreResponse(resp *http.Response, v vault.Vault) error {
 		return fmt.Errorf("proxy: read response body: %w", err)
 	}
 
-	restored := demask(body, v, reqID)
+	restored := demask(body, v, reqID, ctx)
 	resp.Body = io.NopCloser(bytes.NewReader(restored))
 	resp.ContentLength = int64(len(restored))
 	resp.Header.Set("Content-Length", strconv.Itoa(len(restored)))

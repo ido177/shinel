@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net/http"
 
@@ -30,9 +31,9 @@ func (b *bufferSink) Write(p []byte) (int, error) { return b.buf.Write(p) }
 func (b *bufferSink) WriteHeader(int) {}
 
 // demask restores a complete body in one shot.
-func demask(body []byte, v vault.Vault, reqID string) []byte {
+func demask(body []byte, v vault.Vault, reqID string, ctx context.Context) []byte {
 	sink := &bufferSink{}
-	s := NewStreamingResponseWriter(sink, v, reqID)
+	s := NewStreamingResponseWriter(sink, v, reqID, ctx)
 	if _, err := s.Write(body); err != nil {
 		return body // bufferSink never fails, so this is unreachable in practice
 	}
@@ -53,12 +54,12 @@ type demaskReader struct {
 	drain bool // upstream is exhausted; only the sink is left to serve
 }
 
-func newDemaskReader(src io.ReadCloser, v vault.Vault, reqID string) *demaskReader {
+func newDemaskReader(src io.ReadCloser, v vault.Vault, reqID string, ctx context.Context) *demaskReader {
 	sink := &bufferSink{}
 	return &demaskReader{
 		src:   src,
 		sink:  sink,
-		w:     NewStreamingResponseWriter(sink, v, reqID),
+		w:     NewStreamingResponseWriter(sink, v, reqID, ctx),
 		chunk: make([]byte, 4096),
 	}
 }
