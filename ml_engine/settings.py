@@ -5,6 +5,24 @@ from __future__ import annotations
 import os
 
 DEFAULT_MODEL = "urchade/gliner_multi-v2.1"
+_BUILD_SECRET = "/run/secrets/hf_token"
+
+
+def apply_build_token(secret_path: str = _BUILD_SECRET) -> bool:
+    """Load a Hub token from a BuildKit secret file. Returns whether one was set.
+
+    The token is never printed. Call this before from_pretrained in the image bake.
+    """
+    try:
+        raw = open(secret_path, encoding="utf-8").read()
+    except OSError:
+        raw = ""
+    token = raw.strip().strip("'").strip('"').strip()
+    if not token:
+        return False
+    os.environ["HF_TOKEN"] = token
+    os.environ["HUGGING_FACE_HUB_TOKEN"] = token
+    return True
 
 
 def model_name(path: str | None = None) -> str:

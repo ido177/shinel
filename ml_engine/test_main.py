@@ -6,6 +6,7 @@ is used without a context manager, which skips the lifespan that loads GLiNER,
 and a stub is installed in its place.
 """
 
+import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
@@ -176,3 +177,22 @@ def test_model_name_missing_file_uses_default(monkeypatch):
 
     monkeypatch.delenv("SHINEL_ML_MODEL", raising=False)
     assert settings.model_name("/no/such/config.yaml") == settings.DEFAULT_MODEL
+
+
+def test_apply_build_token_strips_quotes(tmp_path, monkeypatch):
+    import settings
+
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.delenv("HUGGING_FACE_HUB_TOKEN", raising=False)
+    p = tmp_path / "hf_token"
+    p.write_text('  "hf_test"\n')
+    assert settings.apply_build_token(str(p)) is True
+    assert os.environ["HF_TOKEN"] == "hf_test"
+    assert os.environ["HUGGING_FACE_HUB_TOKEN"] == "hf_test"
+
+
+def test_apply_build_token_missing_file(monkeypatch):
+    import settings
+
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    assert settings.apply_build_token("/no/such/secret") is False

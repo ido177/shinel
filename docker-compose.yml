@@ -3,10 +3,16 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.python
+      secrets:
+        - hf_token
     image: shinel-ml-engine:latest
     # No published ports: reachable only from shinel-net.
     expose:
       - "8000"
+    environment:
+      SHINEL_CONFIG: /etc/shinel/config.yaml
+    volumes:
+      - ./config.yaml:/etc/shinel/config.yaml:ro
     networks:
       - shinel-net
 
@@ -31,3 +37,9 @@ services:
 # to reach api.openai.com. Isolation of the sidecar is "no published ports".
 networks:
   shinel-net:
+
+# Build-only: the running container does not get this. Compose reads HF_TOKEN
+# from the environment or a project `.env` file.
+secrets:
+  hf_token:
+    environment: HF_TOKEN

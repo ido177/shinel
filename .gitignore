@@ -1,1 +1,7 @@
 .idea
+.env
+.venv
+ml_engine/.venv
+**/__pycache__
+**/.pytest_cache
+*.pyc

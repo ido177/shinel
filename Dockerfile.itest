@@ -1,0 +1,6 @@
+# syntax=docker/dockerfile:1
+
+FROM golang:1.25-alpine
+WORKDIR /src
+COPY itest/go.mod itest/*.go ./
+CMD ["go", "test", "-count=1", "-v", "."]

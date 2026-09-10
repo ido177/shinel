@@ -4,14 +4,25 @@ TAG ?= latest
 PROXY_IMAGE := shinel-proxy
 ML_IMAGE := shinel-ml-engine
 
-.PHONY: build up down test push
+ITEST_COMPOSE := docker compose -f docker-compose.itest.yml
+
+# Load `.env` in the recipe shell (`set -a; . .env`) so quoted HF_TOKEN values
+# work. Make's `-include .env` would keep the quotes in the token.
+
+.PHONY: build up down test push itest
 
 build:
 	docker build -f Dockerfile.proxy -t $(PROXY_IMAGE):$(TAG) .
-	docker build -f Dockerfile.python -t $(ML_IMAGE):$(TAG) .
+	@set -a; [ -f .env ] && . ./.env; set +a; \
+	if [ -z "$$HF_TOKEN" ]; then \
+		echo "warning: HF_TOKEN is unset; HuggingFace may stall the model download"; \
+		docker build -f Dockerfile.python -t $(ML_IMAGE):$(TAG) .; \
+	else \
+		docker build -f Dockerfile.python --secret id=hf_token,env=HF_TOKEN -t $(ML_IMAGE):$(TAG) .; \
+	fi
 
 up:
-	docker compose up -d
+	@set -a; [ -f .env ] && . ./.env; set +a; docker compose up -d
 
 down:
 	docker compose down
@@ -23,6 +34,15 @@ test:
 	else \
 		python3 -m pytest -q ml_engine; \
 	fi
+
+itest:
+	@set -a; [ -f .env ] && . ./.env; set +a; \
+	if [ -z "$$HF_TOKEN" ]; then \
+		echo "HF_TOKEN is empty. Put HF_TOKEN=hf_... in .env (gitignored) and retry."; \
+		exit 1; \
+	fi; \
+	$(ITEST_COMPOSE) up --build --abort-on-container-exit --exit-code-from tester; \
+	st=$$?; $(ITEST_COMPOSE) down; exit $$st
 
 push:
 	@if [ -z "$(DOCKER_USERNAME)" ]; then \

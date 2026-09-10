@@ -36,4 +36,27 @@ It intercepts traffic between your application (or AI agents) and the LLM API, l
                             +--------------------------------------+
 ```
 
+## 🐳 Docker
+
+The ML image bakes GLiNER weights at build time (`ml_engine.model` in `config.yaml`). Hugging Face throttles anonymous downloads, so that layer often stalls on `Fetching 5 files` with a warning about unauthenticated requests.
+
+Set a Hub token **before** the first build. It is passed as a BuildKit secret for that step only and is **not** stored in the image.
+
+```bash
+# gitignored; Compose and Make both read this file
+echo 'HF_TOKEN=hf_...' > .env
+```
+
+Or `export HF_TOKEN=hf_...` in the shell. Get a token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens).
+
+The bake log must contain `huggingface: authenticated`. If you see `huggingface: anonymous` or `unauthenticated requests to the HF Hub`, the secret did not reach the build — stop it and fix `.env` (no spaces around `=`).
+
+```bash
+make build   # shinel-proxy + shinel-ml-engine
+make up      # proxy on :8080, sidecar on the internal network
+make down
+```
+
+`make itest` rebuilds the same ML image, so it needs the token too. After a failed or anonymous bake, rebuild so Docker does not reuse that layer (`make build` is enough when `Dockerfile.python` or `requirements.txt` changed).
+
 ## 🤝 Contributions are always welcome!

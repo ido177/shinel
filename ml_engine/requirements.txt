@@ -2,6 +2,10 @@ fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
 pydantic>=2.9.0
 gliner>=0.2.16
+# mDeBERTa tokenizer (gliner_multi) needs these; transformers will otherwise
+# fall through to tiktoken and crash the image bake.
+protobuf>=5.28.0
+sentencepiece>=0.2.0
 
 # needed by fastapi.testclient
 httpx>=0.27.0
