@@ -30,6 +30,7 @@ func TestMaskRestoreJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
+	logRoundTrip(t, last, string(got))
 	if string(got) != sent {
 		t.Errorf("client\n got %q\nwant %q", got, sent)
 	}
@@ -52,6 +53,7 @@ func TestJSONNumberStaysANumber(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
+	logRoundTrip(t, last, string(got))
 	if string(got) != sent {
 		t.Errorf("client\n got %q\nwant %q", got, sent)
 	}
@@ -73,6 +75,7 @@ func TestSSERestoresAndDropsContentLength(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read stream: %v", err)
 	}
+	logRoundTrip(t, getLast(t), string(got))
 	if !strings.Contains(string(got), "alice@example.com") {
 		t.Errorf("stream missing restored email: %q", got)
 	}
@@ -105,6 +108,7 @@ func TestGLiNERModelFromConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
+	logRoundTrip(t, last, string(got))
 	if !strings.Contains(string(got), text) {
 		t.Errorf("client lost the original text:\n got %q\nwant substring %q", got, text)
 	}
@@ -169,6 +173,12 @@ func postRetry(t *testing.T, url, body string) *http.Response {
 	}
 	t.Fatalf("proxy never accepted connections: %v", last)
 	return nil
+}
+
+func logRoundTrip(t *testing.T, upstream, client string) {
+	t.Helper()
+	t.Logf("upstream received:\n%s", upstream)
+	t.Logf("client received:\n%s", client)
 }
 
 func getLast(t *testing.T) string {
