@@ -36,26 +36,39 @@ func TestMaskRestoreJSON(t *testing.T) {
 	}
 }
 
-func TestMaskPasswordContext(t *testing.T) {
-	const sent = `{"content":"password: hunter2"}`
-	resp := postRetry(t, proxyURL(t)+"/openai/", sent)
-	defer resp.Body.Close()
-
-	last := getLast(t)
-	if strings.Contains(last, "hunter2") {
-		t.Errorf("upstream saw the password: %q", last)
+func TestMaskSecrets(t *testing.T) {
+	tests := []struct {
+		name, sent, secret, token string
+	}{
+		{"password context", `{"content":"password: hunter2"}`, "hunter2", "[PASSWORD_1]"},
+		{"password is", `{"content":"my password is hunter2"}`, "hunter2", "[PASSWORD_1]"},
+		{"json key", `{"password":"hunter2"}`, "hunter2", "[PASSWORD_1]"},
+		{"nested json key", `{"user":{"password":"hunter2"}}`, "hunter2", "[PASSWORD_1]"},
+		{"sk", `{"content":"key sk-abcdefghijklmnopqrst"}`, "sk-abcdefghijklmnopqrst", "[SECRET_1]"},
+		{"aws", `{"content":"id AKIAIOSFODNN7EXAMPLE"}`, "AKIAIOSFODNN7EXAMPLE", "[SECRET_1]"},
+		{"jwt", `{"content":"auth eyJhbGciOiJub25lIn0.eyJzdWIiOiJ4In0.sig"}`, "eyJhbGciOiJub25lIn0.eyJzdWIiOiJ4In0.sig", "[SECRET_1]"},
+		{"github", `{"content":"tok ghp_abcdefghijklmnopqrst"}`, "ghp_abcdefghijklmnopqrst", "[SECRET_1]"},
+		{"google", `{"content":"k AIzaSyDaGmWKa4JsXZ-HjGw7ISLn"}`, "AIzaSyDaGmWKa4JsXZ-HjGw7ISLn", "[SECRET_1]"},
+		{"pem", `{"k":"-----BEGIN PRIVATE KEY-----abc-----END PRIVATE KEY-----"}`, "BEGIN PRIVATE KEY", "[SECRET_1]"},
+		{"token is prose", `{"content":"the token is invalid"}`, "", ""},
+		{"password is prose", `{"content":"the password is required"}`, "", ""},
 	}
-	if !strings.Contains(last, "[PASSWORD_1]") {
-		t.Errorf("upstream body %q is missing [PASSWORD_1]", last)
-	}
-
-	got, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("read: %v", err)
-	}
-	logRoundTrip(t, last, string(got))
-	if string(got) != sent {
-		t.Errorf("client\n got %q\nwant %q", got, sent)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			last, got := postProxy(t, tc.sent)
+			if tc.secret != "" && strings.Contains(last, tc.secret) {
+				t.Errorf("upstream saw %q: %q", tc.secret, last)
+			}
+			if tc.token != "" && !strings.Contains(last, tc.token) {
+				t.Errorf("upstream missing %q: %q", tc.token, last)
+			}
+			if tc.token == "" && (strings.Contains(last, "[PASSWORD_") || strings.Contains(last, "[SECRET_")) {
+				t.Errorf("prose was masked: %q", last)
+			}
+			if got != tc.sent {
+				t.Errorf("client\n got %q\nwant %q", got, tc.sent)
+			}
+		})
 	}
 }
 
@@ -180,6 +193,19 @@ func mustEnv(t *testing.T, key string) string {
 
 func httpClient() *http.Client {
 	return &http.Client{Timeout: 60 * time.Second}
+}
+
+func postProxy(t *testing.T, body string) (upstream, client string) {
+	t.Helper()
+	resp := postRetry(t, proxyURL(t)+"/openai/", body)
+	defer resp.Body.Close()
+	last := getLast(t)
+	got, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	logRoundTrip(t, last, string(got))
+	return last, string(got)
 }
 
 func postRetry(t *testing.T, url, body string) *http.Response {
