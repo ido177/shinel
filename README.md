@@ -21,6 +21,7 @@ It intercepts traffic between your application (or AI agents) and the LLM API, l
   - **Zero-Shot ML (GLiNER):** Optional Python sidecar for names, organizations, and custom labels. If the sidecar is down, regex and dictionary masking still run; names only the model would have caught can then leave the process.
 - 🔒 **100% Local & Self-Hosted:** Your sensitive data never leaves your infrastructure until it's masked.
 - 🖥️ **Local dashboard:** Live process logs, the loaded config, and recent mask mappings at `http://127.0.0.1:8081` (loopback is open; Docker asks for the dashboard password).
+- 📋 **Request logs:** Each proxied call logs method, path, upstream status, duration, and how many values were masked. `log_level` in yaml is `debug` / `info` / `warn` / `error` (default `info`). `debug` also logs each token; the real value is included only when `admin.redact` is `false`.
 
 ## 🏗️ How It Works
 

@@ -4,6 +4,7 @@ import (
 	"flag"
 	"io"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -23,12 +24,15 @@ func main() {
 	flag.Parse()
 
 	logs := admin.NewLogSink(500)
-	log.SetOutput(io.MultiWriter(os.Stderr, logs))
 
 	cfg, err := config.Load(*path)
 	if err != nil {
 		log.Fatalf("shinel: %v", err)
 	}
+
+	out := io.MultiWriter(os.Stderr, logs)
+	log.SetOutput(out)
+	slog.SetDefault(slog.New(slog.NewTextHandler(out, &slog.HandlerOptions{Level: cfg.SlogLevel()})))
 
 	v, err := vault.New(cfg.Vault)
 	if err != nil {

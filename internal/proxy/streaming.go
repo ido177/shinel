@@ -6,7 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/ido177/shinel/internal/vault"
@@ -124,7 +124,7 @@ func (s *StreamingResponseWriter) resolve(token []byte) []byte {
 	value, err := s.vault.GetMapping(s.ctx, s.reqID, string(token))
 	if err != nil {
 		if !errors.Is(err, vault.ErrNotFound) {
-			log.Printf("proxy: vault lookup for %s failed: %v", token, err)
+			slog.Warn("proxy: vault lookup failed", "token", string(token), "err", err)
 		}
 		return token
 	}

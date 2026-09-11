@@ -2,7 +2,9 @@ package proxy
 
 import (
 	"bufio"
+	"bytes"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -408,3 +410,24 @@ func (e *errAfter) Read(p []byte) (int, error) {
 }
 
 func (e *errAfter) Close() error { return nil }
+
+func TestProxyLogsRequestAndMaskCount(t *testing.T) {
+	prev := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	var buf bytes.Buffer
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo})))
+
+	_, upSrv := newUpstream(t, func(w http.ResponseWriter, body string) {
+		w.WriteHeader(http.StatusOK)
+		io.WriteString(w, body)
+	})
+	px := newProxy(t, upSrv.URL, nil)
+	post(t, px.URL, `{"content":"mail alice@example.com"}`)
+
+	got := buf.String()
+	for _, want := range []string{"method=POST", "status=200", "masked=1"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("log %q missing %q", got, want)
+		}
+	}
+}

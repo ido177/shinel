@@ -10,9 +10,12 @@ vault:
   # redis_url: redis://localhost:6379/0
 
 # extra strings to mask, matched case-insensitively
-custom_words: []
+custom_words: [orgname, nameorg]
 #  - Acme Corporation
 #  - Project Bluebird
+
+# debug | info | warn | error
+log_level: info
 
 # local dashboard: logs, config, mask stats. Shows real values.
 # bind 127.0.0.1 is open on the host; any other bind needs admin.token

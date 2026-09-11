@@ -1,6 +1,7 @@
 package config
 
 import (
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -124,5 +125,36 @@ func TestMLEngineTimeoutZeroUsesDefault(t *testing.T) {
 	}
 	if got := (MLEngineConfig{TimeoutMS: 500}).Timeout(); got != 500*time.Millisecond {
 		t.Errorf("Timeout(500) = %v, want 500ms", got)
+	}
+}
+
+func TestLoadLogLevel(t *testing.T) {
+	path := writeConfig(t, "log_level: debug\n")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.LogLevel != "debug" {
+		t.Errorf("LogLevel = %q, want debug", cfg.LogLevel)
+	}
+}
+
+func TestSlogLevel(t *testing.T) {
+	tests := []struct {
+		in   string
+		want slog.Level
+	}{
+		{"", slog.LevelInfo},
+		{"info", slog.LevelInfo},
+		{"DEBUG", slog.LevelDebug},
+		{"warn", slog.LevelWarn},
+		{"warning", slog.LevelWarn},
+		{"error", slog.LevelError},
+		{"nope", slog.LevelInfo},
+	}
+	for _, tc := range tests {
+		if got := (&Config{LogLevel: tc.in}).SlogLevel(); got != tc.want {
+			t.Errorf("%q = %v, want %v", tc.in, got, tc.want)
+		}
 	}
 }

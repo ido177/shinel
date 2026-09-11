@@ -2,7 +2,7 @@ package analyzer
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"sort"
 	"strings"
 )
@@ -75,7 +75,7 @@ func (e *AnalyzerEngine) collectML(ctx context.Context, text string) []span {
 		// Regex/dictionary masking still ran. Names only the model would have
 		// caught can now leave the process; a down sidecar must not take the
 		// proxy down with it.
-		log.Printf("analyzer: ml engine unavailable, continuing without it: %v", err)
+		slog.Warn("analyzer: ml engine unavailable, continuing without it", "err", err)
 		return nil
 	}
 
@@ -84,17 +84,17 @@ func (e *AnalyzerEngine) collectML(ctx context.Context, text string) []span {
 	for _, ent := range entities {
 		start, end, ok := byteRange(offsets, ent.Start, ent.End)
 		if !ok {
-			log.Printf("analyzer: ml engine returned out of range span %d..%d for %q", ent.Start, ent.End, ent.Label)
+			slog.Warn("analyzer: ml engine returned out of range span", "start", ent.Start, "end", ent.End, "label", ent.Label)
 			continue
 		}
 		kind := sanitizeLabel(ent.Label)
 		if kind == "" {
-			log.Printf("analyzer: ml engine returned unusable label %q", ent.Label)
+			slog.Warn("analyzer: ml engine returned unusable label", "label", ent.Label)
 			continue
 		}
 		got := text[start:end]
 		if ent.Entity != "" && got != ent.Entity {
-			log.Printf("analyzer: ml engine span %d..%d (%q) does not match entity %q", ent.Start, ent.End, got, ent.Entity)
+			slog.Warn("analyzer: ml engine span does not match entity", "start", ent.Start, "end", ent.End, "got", got, "entity", ent.Entity)
 			continue
 		}
 		spans = append(spans, span{start, end, kind})

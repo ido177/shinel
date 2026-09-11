@@ -209,7 +209,8 @@ func writeJSON(w http.ResponseWriter, v any) {
 }
 
 type view struct {
-	Server struct {
+	LogLevel string `json:"log_level"`
+	Server   struct {
 		Port int `json:"port"`
 	} `json:"server"`
 	TargetURL   string   `json:"target_url"`
@@ -233,6 +234,7 @@ type view struct {
 
 func publicConfig(cfg *config.Config) view {
 	var v view
+	v.LogLevel = cfg.LogLevel
 	v.Server.Port = cfg.Server.Port
 	v.TargetURL = DisplayURL(cfg.Admin.Redact, cfg.TargetURL)
 	v.CustomWords = cfg.CustomWords

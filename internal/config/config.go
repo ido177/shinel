@@ -3,7 +3,9 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -20,6 +22,8 @@ type Config struct {
 	CustomWords []string       `yaml:"custom_words"`
 	MLEngine    MLEngineConfig `yaml:"ml_engine"`
 	Admin       AdminConfig    `yaml:"admin"`
+	// LogLevel is debug | info | warn | error. Default info.
+	LogLevel string `yaml:"log_level"`
 }
 
 // AdminConfig is the local dashboard. It shows logs, the loaded config, and
@@ -80,7 +84,22 @@ func defaults() *Config {
 		},
 	}
 	cfg.Server.Port = 8080
+	cfg.LogLevel = "info"
 	return cfg
+}
+
+// SlogLevel maps LogLevel to a slog level. Unknown values are info.
+func (c *Config) SlogLevel() slog.Level {
+	switch strings.ToLower(strings.TrimSpace(c.LogLevel)) {
+	case "debug":
+		return slog.LevelDebug
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
 }
 
 // Load reads path and overlays it onto the defaults: fields absent from the

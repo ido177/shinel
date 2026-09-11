@@ -5,12 +5,13 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"mime"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -40,7 +41,8 @@ type Recorder interface {
 }
 
 type options struct {
-	rec Recorder
+	rec    Recorder
+	redact bool
 }
 
 // WithRecorder attaches request stats to the proxy.
@@ -51,7 +53,7 @@ func WithRecorder(r Recorder) func(*options) {
 // New builds the reverse proxy: requests are masked on the way to the upstream
 // API and restored on the way back.
 func New(cfg *config.Config, v vault.Vault, a *analyzer.AnalyzerEngine, opts ...func(*options)) (http.Handler, error) {
-	o := options{}
+	o := options{redact: cfg.Admin.Redact}
 	for _, opt := range opts {
 		opt(&o)
 	}
@@ -74,24 +76,72 @@ func New(cfg *config.Config, v vault.Vault, a *analyzer.AnalyzerEngine, opts ...
 		// transparently decodes it, which keeps response bodies maskable.
 		req.Header.Del("Accept-Encoding")
 
-		maskRequest(req, v, a, o.rec)
+		maskRequest(req, v, a, o.rec, o.redact)
 	}
 	rp.ModifyResponse = func(resp *http.Response) error {
-		return restoreResponse(resp, v)
+		if err := restoreResponse(resp, v); err != nil {
+			slog.Error("proxy restore", "path", resp.Request.URL.Path, "err", err)
+			return err
+		}
+		return nil
 	}
 	rp.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		log.Printf("proxy: upstream %s %s failed: %v", r.Method, r.URL.Path, err)
+		slog.Error("proxy upstream", "method", r.Method, "path", r.URL.Path, "err", err)
 		http.Error(w, "upstream request failed", http.StatusBadGateway)
 	}
 
-	return withRequestID(rp), nil
+	return withRequestLog(rp), nil
 }
 
-// withRequestID assigns each request the vault scope its tokens live under.
-func withRequestID(next http.Handler) http.Handler {
+type maskedKey struct{}
+
+type maskedCount struct{ n int }
+
+type statusWriter struct {
+	http.ResponseWriter
+	code int
+}
+
+func (w *statusWriter) WriteHeader(code int) {
+	if w.code == 0 {
+		w.code = code
+	}
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+func (w *statusWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func (w *statusWriter) status() int {
+	if w.code == 0 {
+		return http.StatusOK
+	}
+	return w.code
+}
+
+// withRequestLog assigns a vault scope and writes one info line after the
+// upstream round-trip: method, path, status, duration, how many values were masked.
+func withRequestLog(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mc := &maskedCount{}
 		ctx := context.WithValue(r.Context(), reqIDKey{}, uuid.NewString())
-		next.ServeHTTP(w, r.WithContext(ctx))
+		ctx = context.WithValue(ctx, maskedKey{}, mc)
+		r = r.WithContext(ctx)
+		start := time.Now()
+		sw := &statusWriter{ResponseWriter: w}
+		next.ServeHTTP(sw, r)
+		slog.Info("proxy",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", sw.status(),
+			"dur", time.Since(start).Round(time.Millisecond),
+			"masked", mc.n,
+		)
 	})
 }
 
@@ -101,9 +151,12 @@ func withRequestID(next http.Handler) http.Handler {
 // Director cannot report an error, so every failure here has to fail safe:
 // whatever happens, the body that goes upstream is never less masked than what
 // we managed to produce.
-func maskRequest(req *http.Request, v vault.Vault, a *analyzer.AnalyzerEngine, rec Recorder) {
+func maskRequest(req *http.Request, v vault.Vault, a *analyzer.AnalyzerEngine, rec Recorder, redact bool) {
 	var mapping map[string]string
 	defer func() {
+		if c, ok := req.Context().Value(maskedKey{}).(*maskedCount); ok {
+			c.n = len(mapping)
+		}
 		if rec != nil {
 			rec.Record(req.Method, req.URL.Path, mapping)
 		}
@@ -113,7 +166,7 @@ func maskRequest(req *http.Request, v vault.Vault, a *analyzer.AnalyzerEngine, r
 		return
 	}
 	if req.ContentLength > maxBodyBytes {
-		log.Printf("proxy: request body %d bytes exceeds %d, dropping it", req.ContentLength, maxBodyBytes)
+		slog.Warn("proxy: request body too large, dropping it", "bytes", req.ContentLength, "max", maxBodyBytes)
 		req.Body.Close()
 		setBody(req, nil)
 		return
@@ -122,12 +175,12 @@ func maskRequest(req *http.Request, v vault.Vault, a *analyzer.AnalyzerEngine, r
 	body, err := io.ReadAll(io.LimitReader(req.Body, maxBodyBytes+1))
 	req.Body.Close()
 	if err != nil {
-		log.Printf("proxy: read request body: %v", err)
+		slog.Warn("proxy: read request body", "err", err)
 		setBody(req, nil)
 		return
 	}
 	if int64(len(body)) > maxBodyBytes {
-		log.Printf("proxy: request body exceeds %d bytes, dropping it", maxBodyBytes)
+		slog.Warn("proxy: request body too large, dropping it", "bytes", len(body), "max", maxBodyBytes)
 		setBody(req, nil)
 		return
 	}
@@ -137,7 +190,12 @@ func maskRequest(req *http.Request, v vault.Vault, a *analyzer.AnalyzerEngine, r
 	for token, value := range mapping {
 		if err := v.SaveMapping(req.Context(), reqID, token, value); err != nil {
 			// The masked text still goes out, it just will not be restored.
-			log.Printf("proxy: save mapping %s: %v", token, err)
+			slog.Error("proxy: save mapping", "token", token, "err", err)
+		}
+		if redact {
+			slog.Debug("proxy mask", "token", token)
+		} else {
+			slog.Debug("proxy mask", "token", token, "value", value)
 		}
 	}
 	setBody(req, []byte(masked))
