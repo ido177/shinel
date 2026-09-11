@@ -36,6 +36,29 @@ func TestMaskRestoreJSON(t *testing.T) {
 	}
 }
 
+func TestMaskPasswordContext(t *testing.T) {
+	const sent = `{"content":"password: hunter2"}`
+	resp := postRetry(t, proxyURL(t)+"/openai/", sent)
+	defer resp.Body.Close()
+
+	last := getLast(t)
+	if strings.Contains(last, "hunter2") {
+		t.Errorf("upstream saw the password: %q", last)
+	}
+	if !strings.Contains(last, "[PASSWORD_1]") {
+		t.Errorf("upstream body %q is missing [PASSWORD_1]", last)
+	}
+
+	got, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	logRoundTrip(t, last, string(got))
+	if string(got) != sent {
+		t.Errorf("client\n got %q\nwant %q", got, sent)
+	}
+}
+
 func TestJSONNumberStaysANumber(t *testing.T) {
 	const sent = `{"amount":4111111111111111,"note":"alice@example.com"}`
 	resp := postRetry(t, proxyURL(t)+"/openai/", sent)

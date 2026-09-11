@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -180,6 +181,18 @@ func TestLoadDefaultProviders(t *testing.T) {
 	}
 	if cfg.Providers["gemini"] != "https://generativelanguage.googleapis.com" {
 		t.Errorf("gemini = %q", cfg.Providers["gemini"])
+	}
+}
+
+func TestLoadDefaultMLLabels(t *testing.T) {
+	path := writeConfig(t, "server:\n  port: 8080\n")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	want := []string{"PERSON", "ORG", "LOCATION", "PASSWORD", "SECRET"}
+	if strings.Join(cfg.MLEngine.Labels, ",") != strings.Join(want, ",") {
+		t.Errorf("Labels = %v, want %v", cfg.MLEngine.Labels, want)
 	}
 }
 

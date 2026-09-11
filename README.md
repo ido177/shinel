@@ -16,9 +16,9 @@ It intercepts traffic between your application (or AI agents) and the LLM API, l
 - 🔌 **Drop-in Replacement:** Point the SDK at `http://localhost:8080/openai/v1`, `/anthropic/v1`, or `/gemini` (native paths after the prefix).
 - ⚡ **Streaming Support:** Seamlessly handles Server-Sent Events (SSE). Tokens are unmasked on the fly without breaking the streaming experience.
 - 🛡️ **Multi-Layer Detection Engine:**
-  - **Regex & Checksums:** Emails, IPv4 addresses, and credit cards (Luhn). JSON bodies are walked as a tree — only string values are masked, so numeric fields stay valid JSON.
+  - **Regex & Checksums:** Emails, IPv4 addresses, credit cards (Luhn), assignment context (`password: …`), known secret formats (`sk-`, AWS/GitHub/Google keys, JWT, PEM), and JSON fields named like `password` / `api_key`. JSON bodies are walked as a tree — only string values are masked, so numeric fields stay valid JSON.
   - **Custom Dictionaries:** Case-insensitive whole-word matching (Aho-Corasick) for internal project names or employee lists.
-  - **Zero-Shot ML (GLiNER):** Optional Python sidecar for names, organizations, and custom labels. If the sidecar is down, regex and dictionary masking still run; names only the model would have caught can then leave the process.
+  - **Zero-Shot ML (GLiNER):** Optional Python sidecar for names, organizations, locations, and labels such as PASSWORD / SECRET. If the sidecar is down, regex and dictionary masking still run; names only the model would have caught can then leave the process.
 - 🔒 **100% Local & Self-Hosted:** Your sensitive data never leaves your infrastructure until it's masked.
 - 🖥️ **Local dashboard:** Live process logs, the loaded config, and recent mask mappings at `http://127.0.0.1:8081` (loopback is open; Docker asks for the dashboard password).
 - 📋 **Request logs:** Each proxied call logs method, path, upstream status, duration, and how many values were masked. `log_level` in yaml is `debug` / `info` / `warn` / `error` (default `info`). `debug` also logs each token; the real value is included only when `admin.redact` is `false`.

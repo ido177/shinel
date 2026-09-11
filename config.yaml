@@ -39,4 +39,6 @@ ml_engine:
     - PERSON
     - ORG
     - LOCATION
+    - PASSWORD
+    - SECRET
   timeout_ms: 15000

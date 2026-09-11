@@ -97,6 +97,17 @@ func newSession() *session {
 	}
 }
 
+func (sess *session) tokenFor(kind, value string) string {
+	if t, ok := sess.tokenOf[value]; ok {
+		return t
+	}
+	sess.counters[kind]++
+	t := fmt.Sprintf("[%s_%d]", kind, sess.counters[kind])
+	sess.tokenOf[value] = t
+	sess.mapping[t] = value
+	return t
+}
+
 func (e *AnalyzerEngine) anonymizeText(ctx context.Context, text string, sess *session) (string, map[string]string) {
 	spans := resolveConflicts(e.collect(text), e.collectML(ctx, text))
 	sortSpans(spans)
@@ -108,15 +119,8 @@ func (e *AnalyzerEngine) anonymizeText(ctx context.Context, text string, sess *s
 			continue
 		}
 		value := text[s.start:s.end]
-		token, ok := sess.tokenOf[value]
-		if !ok {
-			sess.counters[s.kind]++
-			token = fmt.Sprintf("[%s_%d]", s.kind, sess.counters[s.kind])
-			sess.tokenOf[value] = token
-			sess.mapping[token] = value
-		}
 		b.WriteString(text[last:s.start])
-		b.WriteString(token)
+		b.WriteString(sess.tokenFor(s.kind, value))
 		last = s.end
 	}
 	b.WriteString(text[last:])
@@ -139,6 +143,7 @@ func (e *AnalyzerEngine) collect(text string) []span {
 			spans = append(spans, span{m[0], m[1], "CARD"})
 		}
 	}
+	spans = append(spans, collectSecrets(text)...)
 	spans = append(spans, e.collectCustom(text)...)
 
 	return spans

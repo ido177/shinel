@@ -56,6 +56,10 @@ func (e *AnalyzerEngine) walkJSON(ctx context.Context, v *any, sess *session) {
 		sort.Strings(keys)
 		for _, k := range keys {
 			c := x[k]
+			if s, ok := c.(string); ok && secretKey(k) && s != "" {
+				x[k] = sess.tokenFor(kindPassword, s)
+				continue
+			}
 			e.walkJSON(ctx, &c, sess)
 			x[k] = c
 		}

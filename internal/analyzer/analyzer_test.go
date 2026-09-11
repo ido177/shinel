@@ -116,6 +116,101 @@ func TestAnonymize(t *testing.T) {
 			in:   "nothing to mask",
 			want: "nothing to mask",
 		},
+		{
+			name: "password assignment",
+			in:   "my password is hunter2",
+			want: "my password is [PASSWORD_1]",
+		},
+		{
+			name: "password colon strips trailing punct",
+			in:   "password: hunter2.",
+			want: "password: [PASSWORD_1].",
+		},
+		{
+			name: "password quoted value",
+			in:   `password="hunter2"`,
+			want: `password="[PASSWORD_1]"`,
+		},
+		{
+			name: "password policy is not an assignment",
+			in:   "review the password policy",
+			want: "review the password policy",
+		},
+		{
+			name: "token is prose",
+			in:   "the token is invalid",
+			want: "the token is invalid",
+		},
+		{
+			name: "password is prose",
+			in:   "the password is required",
+			want: "the password is required",
+		},
+		{
+			name: "api key is prose",
+			in:   "The API key is required",
+			want: "The API key is required",
+		},
+		{
+			name: "secret is prose",
+			in:   "the secret is important",
+			want: "the secret is important",
+		},
+		{
+			name: "json password key",
+			in:   `{"password":"hunter2"}`,
+			want: `{"password":"[PASSWORD_1]"}`,
+		},
+		{
+			name: "json content with password context",
+			in:   `{"content":"password: hunter2"}`,
+			want: `{"content":"password: [PASSWORD_1]"}`,
+		},
+		{
+			name: "openai-like key",
+			in:   "key sk-abcdefghijklmnopqrst",
+			want: "key [SECRET_1]",
+		},
+		{
+			name: "aws access key",
+			in:   "id AKIAIOSFODNN7EXAMPLE",
+			want: "id [SECRET_1]",
+		},
+		{
+			name: "jwt",
+			in:   "auth eyJhbGciOiJub25lIn0.eyJzdWIiOiJ4In0.sig",
+			want: "auth [SECRET_1]",
+		},
+		{
+			name: "pem",
+			in:   "-----BEGIN PRIVATE KEY-----\nMIIB\n-----END PRIVATE KEY-----",
+			want: "[SECRET_1]",
+		},
+		{
+			name: "rsa pem",
+			in:   "-----BEGIN RSA PRIVATE KEY-----\nMIIB\n-----END RSA PRIVATE KEY-----",
+			want: "[SECRET_1]",
+		},
+		{
+			name: "json pem one line",
+			in:   `{"k":"-----BEGIN PRIVATE KEY-----abc-----END PRIVATE KEY-----"}`,
+			want: `{"k":"[SECRET_1]"}`,
+		},
+		{
+			name: "github pat",
+			in:   "tok ghp_abcdefghijklmnopqrst",
+			want: "tok [SECRET_1]",
+		},
+		{
+			name: "google api key",
+			in:   "k AIzaSyDaGmWKa4JsXZ-HjGw7ISLn",
+			want: "k [SECRET_1]",
+		},
+		{
+			name: "nested json password key",
+			in:   `{"user":{"password":"hunter2"}}`,
+			want: `{"user":{"password":"[PASSWORD_1]"}}`,
+		},
 	}
 
 	for _, tc := range tests {
@@ -170,6 +265,19 @@ func TestAnonymizeConcurrent(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+func TestSecretKey(t *testing.T) {
+	for _, k := range []string{"password", "Password", "api_key", "API-Key", "token"} {
+		if !secretKey(k) {
+			t.Errorf("secretKey(%q) = false", k)
+		}
+	}
+	for _, k := range []string{"content", "messages", "model", "note"} {
+		if secretKey(k) {
+			t.Errorf("secretKey(%q) = true", k)
+		}
+	}
 }
 
 func TestOverlapIndex(t *testing.T) {

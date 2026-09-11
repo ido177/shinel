@@ -80,7 +80,7 @@ func defaults() *Config {
 		},
 		MLEngine: MLEngineConfig{
 			Model:     "urchade/gliner_multi-v2.1",
-			Labels:    []string{"PERSON", "ORG", "LOCATION"},
+			Labels:    []string{"PERSON", "ORG", "LOCATION", "PASSWORD", "SECRET"},
 			TimeoutMS: 2000,
 		},
 		Admin: AdminConfig{

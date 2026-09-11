@@ -169,6 +169,34 @@ func TestAnonymizeKeepsNonOverlappingMLSpans(t *testing.T) {
 	}
 }
 
+func TestAnonymizeDropsPasswordMarkerMLSpan(t *testing.T) {
+	const in = "the password is required"
+	e := mlEngine(t, nil, []Entity{{Entity: "password", Label: "PASSWORD", Start: 4, End: 12}})
+
+	got, mapping := e.Anonymize(t.Context(), in)
+	if got != in {
+		t.Errorf("\n got %q\nwant %q", got, in)
+	}
+	if len(mapping) != 0 {
+		t.Errorf("mapping = %v, want empty", mapping)
+	}
+}
+
+func TestAnonymizeKeepsPasswordMLSpan(t *testing.T) {
+	const in = "hunter2 wrote to a@x.com"
+	e := mlEngine(t, nil, []Entity{{Entity: "hunter2", Label: "PASSWORD", Start: 0, End: 7}})
+
+	got, mapping := e.Anonymize(t.Context(), in)
+
+	if want := "[PASSWORD_1] wrote to [EMAIL_1]"; got != want {
+		t.Errorf("\n got %q\nwant %q", got, want)
+	}
+	checkTokens(t, mapping)
+	if restored := restore(got, mapping); restored != in {
+		t.Errorf("round trip\n got %q\nwant %q", restored, in)
+	}
+}
+
 // Coordinates arrive from another process, so nonsense must be dropped rather
 // than panic on a slice.
 func TestAnonymizeRejectsOutOfRangeSpans(t *testing.T) {

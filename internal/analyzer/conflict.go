@@ -97,6 +97,11 @@ func (e *AnalyzerEngine) collectML(ctx context.Context, text string) []span {
 			slog.Warn("analyzer: ml engine span does not match entity", "start", ent.Start, "end", ent.End, "got", got, "entity", ent.Entity)
 			continue
 		}
+		// GLiNER with a PASSWORD/SECRET label often tags the word "password"
+		// itself. Letters-only guesses are not credentials.
+		if (kind == kindPassword || kind == kindSecret) && looksLikeProse(got) {
+			continue
+		}
 		spans = append(spans, span{start, end, kind})
 	}
 	return spans
