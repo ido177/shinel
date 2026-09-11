@@ -11,6 +11,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -57,24 +58,32 @@ func New(cfg *config.Config, v vault.Vault, a *analyzer.AnalyzerEngine, opts ...
 	for _, opt := range opts {
 		opt(&o)
 	}
-	target, err := url.Parse(cfg.TargetURL)
+	origins, err := parseProviders(cfg.Providers)
 	if err != nil {
-		return nil, fmt.Errorf("proxy: bad target url: %w", err)
+		return nil, err
 	}
-	if target.Scheme == "" || target.Host == "" {
-		return nil, fmt.Errorf("proxy: target url %q needs a scheme and a host", cfg.TargetURL)
+	if len(origins) == 0 {
+		return nil, fmt.Errorf("proxy: providers is empty")
 	}
 
-	rp := httputil.NewSingleHostReverseProxy(target)
-	route := rp.Director
+	rp := &httputil.ReverseProxy{}
 	rp.Director = func(req *http.Request) {
-		route(req)
-		// NewSingleHostReverseProxy only rewrites the URL, so the Host header
-		// would still name shinel and a virtual-hosted API would reject it.
+		name, target, path, ok := route(req.URL.Path, origins)
+		if !ok {
+			return
+		}
+		if p, ok := req.Context().Value(providerKey{}).(*providerName); ok {
+			p.s = name
+		}
+		req.URL.Scheme = target.Scheme
+		req.URL.Host = target.Host
+		req.URL.Path = path
+		req.URL.RawPath = ""
 		req.Host = target.Host
-		// Ask for an identity encoding: the transport adds its own gzip and
-		// transparently decodes it, which keeps response bodies maskable.
 		req.Header.Del("Accept-Encoding")
+		if _, ok := req.Header["User-Agent"]; !ok {
+			req.Header.Set("User-Agent", "")
+		}
 
 		maskRequest(req, v, a, o.rec, o.redact)
 	}
@@ -90,12 +99,75 @@ func New(cfg *config.Config, v vault.Vault, a *analyzer.AnalyzerEngine, opts ...
 		http.Error(w, "upstream request failed", http.StatusBadGateway)
 	}
 
-	return withRequestLog(rp), nil
+	return withRequestLog(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, _, _, ok := route(r.URL.Path, origins); !ok {
+			http.Error(w, "unknown provider", http.StatusNotFound)
+			return
+		}
+		rp.ServeHTTP(w, r)
+	})), nil
 }
 
 type maskedKey struct{}
 
 type maskedCount struct{ n int }
+
+type providerKey struct{}
+
+type providerName struct{ s string }
+
+func parseOrigin(label, raw string) (*url.URL, error) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return nil, fmt.Errorf("proxy: bad %s: %w", label, err)
+	}
+	if u.Scheme == "" || u.Host == "" {
+		return nil, fmt.Errorf("proxy: %s %q needs a scheme and a host", label, raw)
+	}
+	return u, nil
+}
+
+func parseProviders(m map[string]string) (map[string]*url.URL, error) {
+	out := make(map[string]*url.URL, len(m))
+	for name, raw := range m {
+		u, err := parseOrigin("provider "+name, raw)
+		if err != nil {
+			return nil, err
+		}
+		out[name] = u
+	}
+	return out, nil
+}
+
+// route picks an origin from the first path segment when it names a provider.
+// /openai/v1/chat → openai, /v1/chat. Unknown prefixes are not forwarded.
+func route(path string, providers map[string]*url.URL) (name string, target *url.URL, rest string, ok bool) {
+	first, rest, ok := splitPrefix(path)
+	if !ok {
+		return "", nil, path, false
+	}
+	u, hit := providers[first]
+	if !hit {
+		return first, nil, path, false
+	}
+	return first, u, rest, true
+}
+
+func splitPrefix(path string) (first, rest string, ok bool) {
+	p := strings.TrimPrefix(path, "/")
+	if p == "" {
+		return "", path, false
+	}
+	i := strings.IndexByte(p, '/')
+	if i < 0 {
+		return p, "/", true
+	}
+	rest = p[i:]
+	if rest == "" {
+		rest = "/"
+	}
+	return p[:i], rest, true
+}
 
 type statusWriter struct {
 	http.ResponseWriter
@@ -129,8 +201,10 @@ func (w *statusWriter) status() int {
 func withRequestLog(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mc := &maskedCount{}
+		pn := &providerName{}
 		ctx := context.WithValue(r.Context(), reqIDKey{}, uuid.NewString())
 		ctx = context.WithValue(ctx, maskedKey{}, mc)
+		ctx = context.WithValue(ctx, providerKey{}, pn)
 		r = r.WithContext(ctx)
 		start := time.Now()
 		sw := &statusWriter{ResponseWriter: w}
@@ -138,6 +212,7 @@ func withRequestLog(next http.Handler) http.Handler {
 		slog.Info("proxy",
 			"method", r.Method,
 			"path", r.URL.Path,
+			"provider", pn.s,
 			"status", sw.status(),
 			"dur", time.Since(start).Round(time.Millisecond),
 			"masked", mc.n,

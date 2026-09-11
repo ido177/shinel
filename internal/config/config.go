@@ -15,8 +15,10 @@ type Config struct {
 	Server struct {
 		Port int `yaml:"port"`
 	} `yaml:"server"`
-	TargetURL string      `yaml:"target_url"`
-	Vault     VaultConfig `yaml:"vault"`
+	// Providers maps a path prefix (openai, anthropic, gemini) to an origin.
+	// A request to /openai/v1/... is forwarded to that origin at /v1/...
+	Providers map[string]string `yaml:"providers"`
+	Vault     VaultConfig       `yaml:"vault"`
 	// CustomWords are extra strings the analyzer masks alongside the built-in
 	// entity detectors.
 	CustomWords []string       `yaml:"custom_words"`
@@ -67,7 +69,11 @@ type VaultConfig struct {
 
 func defaults() *Config {
 	cfg := &Config{
-		TargetURL: "https://api.openai.com",
+		Providers: map[string]string{
+			"openai":    "https://api.openai.com",
+			"anthropic": "https://api.anthropic.com",
+			"gemini":    "https://generativelanguage.googleapis.com",
+		},
 		Vault: VaultConfig{
 			Type:     "memory",
 			RedisURL: "redis://localhost:6379/0",
@@ -114,14 +120,27 @@ func Load(path string) (*Config, error) {
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("parse config %s: %w", path, err)
 	}
+	var leftover struct {
+		TargetURL string `yaml:"target_url"`
+	}
+	if err := yaml.Unmarshal(data, &leftover); err != nil {
+		return nil, fmt.Errorf("parse config %s: %w", path, err)
+	}
+	if leftover.TargetURL != "" {
+		return nil, fmt.Errorf("config %s: target_url is removed; set providers.openai instead", path)
+	}
 	// SHINEL_ML_URL wins over the file so one config works both on a laptop and
 	// in compose, where the sidecar answers at a service name that does not
 	// resolve anywhere else.
 	if url := os.Getenv("SHINEL_ML_URL"); url != "" {
 		cfg.MLEngine.URL = url
 	}
+	// Itest points the openai prefix at the echo container. Other providers stay as in yaml.
 	if url := os.Getenv("SHINEL_TARGET_URL"); url != "" {
-		cfg.TargetURL = url
+		if cfg.Providers == nil {
+			cfg.Providers = map[string]string{}
+		}
+		cfg.Providers["openai"] = url
 	}
 	if bind := os.Getenv("SHINEL_ADMIN_BIND"); bind != "" {
 		cfg.Admin.Bind = bind

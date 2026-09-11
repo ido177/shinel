@@ -77,7 +77,7 @@ func main() {
 	if ml != nil {
 		mlState = cfg.MLEngine.URL
 	}
-	log.Printf("shinel: vault=%s, target=%s, ml=%s, listening on %s", cfg.Vault.Type, admin.DisplayURL(cfg.Admin.Redact, cfg.TargetURL), admin.DisplayURL(cfg.Admin.Redact, mlState), addr)
+	log.Printf("shinel: vault=%s, providers=%d, ml=%s, listening on %s", cfg.Vault.Type, len(cfg.Providers), admin.DisplayURL(cfg.Admin.Redact, mlState), addr)
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("shinel: %v", err)
 	}

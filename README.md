@@ -13,7 +13,7 @@ It intercepts traffic between your application (or AI agents) and the LLM API, l
 
 ## ✨ Features
 
-- 🔌 **Drop-in Replacement:** Fully compatible with OpenAI API format. Just change your endpoint to `http://localhost:8080/v1`.
+- 🔌 **Drop-in Replacement:** Point the SDK at `http://localhost:8080/openai/v1`, `/anthropic/v1`, or `/gemini` (native paths after the prefix).
 - ⚡ **Streaming Support:** Seamlessly handles Server-Sent Events (SSE). Tokens are unmasked on the fly without breaking the streaming experience.
 - 🛡️ **Multi-Layer Detection Engine:**
   - **Regex & Checksums:** Emails, IPv4 addresses, and credit cards (Luhn). JSON bodies are walked as a tree — only string values are masked, so numeric fields stay valid JSON.
@@ -85,15 +85,14 @@ If `SHINEL_ADMIN_TOKEN` is unset, the proxy logs a generated one: `admin dashboa
 
 ## 🧪 Try it
 
-Point the OpenAI client at `http://127.0.0.1:8080/v1` (same paths, same `Authorization` header). A few smokes:
+Point the client at a provider prefix. The native path after the prefix is forwarded as-is (no OpenAI↔Anthropic translation). A path without a known prefix returns 404.
 
 ```bash
-# models list — proxy is up if this is not connection-refused
-curl http://127.0.0.1:8080/v1/models \
+# OpenAI
+curl http://127.0.0.1:8080/openai/v1/models \
   -H "Authorization: Bearer $OPENAI_API_KEY"
 
-# chat: email, IPv4, and a name should be masked on the way out and restored in the reply
-curl http://127.0.0.1:8080/v1/chat/completions \
+curl http://127.0.0.1:8080/openai/v1/chat/completions \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -106,8 +105,7 @@ curl http://127.0.0.1:8080/v1/chat/completions \
     ]
   }'
 
-# same, streamed
-curl -N http://127.0.0.1:8080/v1/chat/completions \
+curl -N http://127.0.0.1:8080/openai/v1/chat/completions \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -120,8 +118,40 @@ curl -N http://127.0.0.1:8080/v1/chat/completions \
       }
     ]
   }'
+
+# Anthropic
+curl http://127.0.0.1:8080/anthropic/v1/messages \
+  -H "x-api-key: $ANTHROPIC_API_KEY" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "claude-sonnet-4-5",
+    "max_tokens": 128,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Repeat these unchanged: ada@example.com, 8.8.8.8, Ivan Petrov"
+      }
+    ]
+  }'
+
+# Gemini
+curl "http://127.0.0.1:8080/gemini/v1beta/models/gemini-2.0-flash:generateContent" \
+  -H "Content-Type: application/json" \
+  -H "x-goog-api-key: $GEMINI_API_KEY" \
+  -d '{
+    "contents": [
+      {
+        "parts": [
+          {
+            "text": "Repeat these unchanged: ada@example.com, 8.8.8.8, Ivan Petrov"
+          }
+        ]
+      }
+    ]
+  }'
 ```
 
-Without a valid key OpenAI still returns 401, but Shinel has already masked the body — check the Stats tab. With a key, the model should echo the real values (unmasked on the way back), not `[EMAIL_1]` / `[IP_1]` / `[PERSON_1]`.
+Without a valid key the provider still returns 401, but Shinel has already masked the body — check the Stats tab. With a key, the model should echo the real values (unmasked on the way back), not `[EMAIL_1]` / `[IP_1]` / `[PERSON_1]`.
 
 ## 🤝 Contributions are always welcome!

@@ -22,12 +22,13 @@ import (
 // how the test checks that nothing sensitive left the process.
 type upstream struct {
 	got     chan string
+	paths   chan string
 	respond func(w http.ResponseWriter, body string)
 }
 
 func newUpstream(t *testing.T, respond func(w http.ResponseWriter, body string)) (*upstream, *httptest.Server) {
 	t.Helper()
-	u := &upstream{got: make(chan string, 8), respond: respond}
+	u := &upstream{got: make(chan string, 8), paths: make(chan string, 8), respond: respond}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -38,6 +39,10 @@ func newUpstream(t *testing.T, respond func(w http.ResponseWriter, body string))
 		// otherwise deadlock the upstream once the channel filled up.
 		select {
 		case u.got <- string(body):
+		default:
+		}
+		select {
+		case u.paths <- r.URL.Path:
 		default:
 		}
 		u.respond(w, string(body))
@@ -57,9 +62,20 @@ func (u *upstream) received(t *testing.T) string {
 	}
 }
 
+func (u *upstream) receivedPath(t *testing.T) string {
+	t.Helper()
+	select {
+	case p := <-u.paths:
+		return p
+	case <-time.After(5 * time.Second):
+		t.Fatal("upstream never received a path")
+		return ""
+	}
+}
+
 func newProxy(t *testing.T, targetURL string, customWords []string) *httptest.Server {
 	t.Helper()
-	cfg := &config.Config{TargetURL: targetURL}
+	cfg := &config.Config{Providers: map[string]string{"openai": targetURL}}
 	h, err := New(cfg, vault.NewInMemoryVault(), analyzer.New(customWords, nil))
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -89,7 +105,7 @@ func TestProxyMasksRequestAndRestoresJSONResponse(t *testing.T) {
 	px := newProxy(t, upSrv.URL, []string{"Acme"})
 
 	const sent = `{"content":"Acme: mail alice@example.com from 10.0.0.1 card 4111111111111111"}`
-	resp := post(t, px.URL, sent)
+	resp := post(t, px.URL+"/openai", sent)
 
 	got := up.received(t)
 	for _, secret := range []string{"Acme", "alice@example.com", "10.0.0.1", "4111111111111111"} {
@@ -122,14 +138,14 @@ func TestProxyRecordsMasking(t *testing.T) {
 		io.WriteString(w, body)
 	})
 	rec := &testRecorder{}
-	h, err := New(&config.Config{TargetURL: upSrv.URL}, vault.NewInMemoryVault(), analyzer.New(nil, nil), WithRecorder(rec))
+	h, err := New(&config.Config{Providers: map[string]string{"openai": upSrv.URL}}, vault.NewInMemoryVault(), analyzer.New(nil, nil), WithRecorder(rec))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
 
-	post(t, srv.URL, `{"content":"mail alice@example.com"}`)
+	post(t, srv.URL+"/openai", `{"content":"mail alice@example.com"}`)
 	if rec.n != 1 {
 		t.Fatalf("recorded %d requests, want 1", rec.n)
 	}
@@ -162,7 +178,7 @@ func TestProxyRestoresEventStream(t *testing.T) {
 	})
 	px := newProxy(t, upSrv.URL, nil)
 
-	resp := post(t, px.URL, `{"content":"alice@example.com","stream":true}`)
+	resp := post(t, px.URL+"/openai", `{"content":"alice@example.com","stream":true}`)
 	up.received(t)
 
 	if ct := resp.Header.Get("Content-Type"); ct != "text/event-stream" {
@@ -189,7 +205,7 @@ func TestProxyReleasesDanglingCandidateAtStreamEnd(t *testing.T) {
 	})
 	px := newProxy(t, upSrv.URL, nil)
 
-	resp := post(t, px.URL, `{"content":"alice@example.com"}`)
+	resp := post(t, px.URL+"/openai", `{"content":"alice@example.com"}`)
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatalf("read stream: %v", err)
@@ -216,7 +232,7 @@ func TestProxyStreamsWithoutWaitingForTheEnd(t *testing.T) {
 	px := newProxy(t, upSrv.URL, nil)
 	defer close(release)
 
-	resp := post(t, px.URL, `{"content":"alice@example.com"}`)
+	resp := post(t, px.URL+"/openai", `{"content":"alice@example.com"}`)
 
 	line, err := bufio.NewReader(resp.Body).ReadString('\n')
 	if err != nil {
@@ -251,7 +267,7 @@ func TestProxyScopesTokensPerRequest(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			resp, err := http.Post(px.URL, "application/json", strings.NewReader(`{"content":"`+email+`"}`))
+			resp, err := http.Post(px.URL+"/openai", "application/json", strings.NewReader(`{"content":"`+email+`"}`))
 			if err != nil {
 				errs[i] = err
 				return
@@ -280,7 +296,7 @@ func TestProxyPassesThroughBodilessRequests(t *testing.T) {
 	})
 	px := newProxy(t, upSrv.URL, nil)
 
-	resp, err := http.Get(px.URL + "/v1/models")
+	resp, err := http.Get(px.URL + "/openai/v1/models")
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -297,15 +313,18 @@ func TestProxyPassesThroughBodilessRequests(t *testing.T) {
 func TestProxyReportsUpstreamFailure(t *testing.T) {
 	px := newProxy(t, "http://127.0.0.1:1", nil) // nothing listens there
 
-	resp := post(t, px.URL, `{"content":"hi"}`)
+	resp := post(t, px.URL+"/openai", `{"content":"hi"}`)
 	if resp.StatusCode != http.StatusBadGateway {
 		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusBadGateway)
 	}
 }
 
-func TestNewRejectsBadTarget(t *testing.T) {
+func TestNewRejectsBadProviders(t *testing.T) {
+	if _, err := New(&config.Config{}, vault.NewInMemoryVault(), analyzer.New(nil, nil)); err == nil {
+		t.Error("empty providers: want error")
+	}
 	for _, target := range []string{"", "not-a-url", "://missing-scheme"} {
-		cfg := &config.Config{TargetURL: target}
+		cfg := &config.Config{Providers: map[string]string{"openai": target}}
 		if _, err := New(cfg, vault.NewInMemoryVault(), analyzer.New(nil, nil)); err == nil {
 			t.Errorf("New(%q): want error, got nil", target)
 		}
@@ -320,7 +339,7 @@ func TestProxyLeavesJSONNumbersIntact(t *testing.T) {
 	px := newProxy(t, upSrv.URL, nil)
 
 	const sent = `{"amount":4111111111111111,"note":"alice@example.com"}`
-	resp := post(t, px.URL, sent)
+	resp := post(t, px.URL+"/openai", sent)
 
 	got := up.received(t)
 	if !strings.Contains(got, "4111111111111111") {
@@ -349,7 +368,7 @@ func TestProxyDropsContentLengthOnSSE(t *testing.T) {
 	})
 	px := newProxy(t, upSrv.URL, nil)
 
-	resp := post(t, px.URL, `{"content":"alice@example.com"}`)
+	resp := post(t, px.URL+"/openai", `{"content":"alice@example.com"}`)
 	if got := resp.Header.Get("Content-Length"); got != "" {
 		t.Errorf("Content-Length = %q, want it dropped for SSE", got)
 	}
@@ -366,12 +385,12 @@ func TestProxyDropsOversizedRequest(t *testing.T) {
 	up, upSrv := newUpstream(t, func(w http.ResponseWriter, body string) {
 		io.WriteString(w, "ok")
 	})
-	h, err := New(&config.Config{TargetURL: upSrv.URL}, vault.NewInMemoryVault(), analyzer.New(nil, nil))
+	h, err := New(&config.Config{Providers: map[string]string{"openai": upSrv.URL}}, vault.NewInMemoryVault(), analyzer.New(nil, nil))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "http://shinel/", strings.NewReader(`{"content":"hi"}`))
+	req := httptest.NewRequest(http.MethodPost, "http://shinel/openai", strings.NewReader(`{"content":"hi"}`))
 	req.ContentLength = maxBodyBytes + 1
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -422,12 +441,68 @@ func TestProxyLogsRequestAndMaskCount(t *testing.T) {
 		io.WriteString(w, body)
 	})
 	px := newProxy(t, upSrv.URL, nil)
-	post(t, px.URL, `{"content":"mail alice@example.com"}`)
+	post(t, px.URL+"/openai", `{"content":"mail alice@example.com"}`)
 
 	got := buf.String()
-	for _, want := range []string{"method=POST", "status=200", "masked=1"} {
+	for _, want := range []string{"method=POST", "status=200", "masked=1", "provider=openai"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("log %q missing %q", got, want)
 		}
+	}
+}
+
+func TestSplitPrefix(t *testing.T) {
+	tests := []struct {
+		in, first, rest string
+		ok              bool
+	}{
+		{"/", "", "/", false},
+		{"/openai", "openai", "/", true},
+		{"/openai/v1/chat", "openai", "/v1/chat", true},
+		{"/gemini/v1beta/models/x:generateContent", "gemini", "/v1beta/models/x:generateContent", true},
+		{"/v1/models", "v1", "/models", true},
+	}
+	for _, tc := range tests {
+		first, rest, ok := splitPrefix(tc.in)
+		if first != tc.first || rest != tc.rest || ok != tc.ok {
+			t.Errorf("splitPrefix(%q) = %q %q %v, want %q %q %v", tc.in, first, rest, ok, tc.first, tc.rest, tc.ok)
+		}
+	}
+}
+
+func TestProxyRoutesByPrefix(t *testing.T) {
+	openai, openaiSrv := newUpstream(t, func(w http.ResponseWriter, body string) { io.WriteString(w, body) })
+	anth, anthSrv := newUpstream(t, func(w http.ResponseWriter, body string) { io.WriteString(w, body) })
+	cfg := &config.Config{
+		Providers: map[string]string{
+			"openai":    openaiSrv.URL,
+			"anthropic": anthSrv.URL,
+		},
+	}
+	h, err := New(cfg, vault.NewInMemoryVault(), analyzer.New(nil, nil))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	px := httptest.NewServer(h)
+	t.Cleanup(px.Close)
+
+	post(t, px.URL+"/openai/v1/chat/completions", `{"content":"mail alice@example.com"}`)
+	if p := openai.receivedPath(t); p != "/v1/chat/completions" {
+		t.Errorf("openai path %q, want /v1/chat/completions", p)
+	}
+	got := openai.received(t)
+	if strings.Contains(got, "alice@example.com") || !strings.Contains(got, "[EMAIL_1]") {
+		t.Errorf("openai body %q, want masked email", got)
+	}
+
+	post(t, px.URL+"/anthropic/v1/messages", `{"content":"hi"}`)
+	if p := anth.receivedPath(t); p != "/v1/messages" {
+		t.Errorf("anthropic path %q, want /v1/messages", p)
+	}
+	_ = anth.received(t)
+
+	resp := post(t, px.URL+"/v1/models", `{"content":"hi"}`)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("no prefix status %d, want 404", resp.StatusCode)
 	}
 }

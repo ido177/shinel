@@ -15,7 +15,7 @@ import (
 
 func TestMaskRestoreJSON(t *testing.T) {
 	const sent = `{"content":"mail alice@example.com"}`
-	resp := postRetry(t, proxyURL(t)+"/", sent)
+	resp := postRetry(t, proxyURL(t)+"/openai/", sent)
 	defer resp.Body.Close()
 
 	last := getLast(t)
@@ -37,7 +37,7 @@ func TestMaskRestoreJSON(t *testing.T) {
 
 func TestJSONNumberStaysANumber(t *testing.T) {
 	const sent = `{"amount":4111111111111111,"note":"alice@example.com"}`
-	resp := postRetry(t, proxyURL(t)+"/", sent)
+	resp := postRetry(t, proxyURL(t)+"/openai/", sent)
 	defer resp.Body.Close()
 
 	last := getLast(t)
@@ -59,7 +59,7 @@ func TestJSONNumberStaysANumber(t *testing.T) {
 
 func TestSSERestoresAndDropsContentLength(t *testing.T) {
 	const sent = `{"content":"alice@example.com","stream":true}`
-	resp := postRetry(t, proxyURL(t)+"/", sent)
+	resp := postRetry(t, proxyURL(t)+"/openai/", sent)
 	defer resp.Body.Close()
 
 	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/event-stream") {
@@ -91,7 +91,7 @@ func TestGLiNERModelFromConfig(t *testing.T) {
 	}
 
 	payload := `{"content":"` + text + `"}`
-	presp := postRetry(t, proxyURL(t)+"/", payload)
+	presp := postRetry(t, proxyURL(t)+"/openai/", payload)
 	defer presp.Body.Close()
 	last := getLast(t)
 	if !strings.Contains(last, "[PERSON_") {

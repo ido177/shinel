@@ -30,16 +30,23 @@ func TestLoadMLURLEnvOverridesFile(t *testing.T) {
 	}
 }
 
-func TestLoadTargetURLEnvOverridesFile(t *testing.T) {
-	path := writeConfig(t, "target_url: https://api.openai.com\n")
+func TestLoadRejectsTargetURL(t *testing.T) {
+	path := writeConfig(t, "target_url: http://upstream:8080\n")
+	if _, err := Load(path); err == nil {
+		t.Fatal("Load: want error for leftover target_url")
+	}
+}
+
+func TestLoadOpenAIEnvOverridesProvider(t *testing.T) {
+	path := writeConfig(t, "providers:\n  openai: https://api.openai.com\n")
 	t.Setenv("SHINEL_TARGET_URL", "http://upstream:8080")
 
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if want := "http://upstream:8080"; cfg.TargetURL != want {
-		t.Errorf("TargetURL = %q, want %q", cfg.TargetURL, want)
+	if want := "http://upstream:8080"; cfg.Providers["openai"] != want {
+		t.Errorf("Providers[openai] = %q, want %q", cfg.Providers["openai"], want)
 	}
 }
 
@@ -156,5 +163,37 @@ func TestSlogLevel(t *testing.T) {
 		if got := (&Config{LogLevel: tc.in}).SlogLevel(); got != tc.want {
 			t.Errorf("%q = %v, want %v", tc.in, got, tc.want)
 		}
+	}
+}
+
+func TestLoadDefaultProviders(t *testing.T) {
+	path := writeConfig(t, "server:\n  port: 8080\n")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Providers["openai"] != "https://api.openai.com" {
+		t.Errorf("openai = %q", cfg.Providers["openai"])
+	}
+	if cfg.Providers["anthropic"] != "https://api.anthropic.com" {
+		t.Errorf("anthropic = %q", cfg.Providers["anthropic"])
+	}
+	if cfg.Providers["gemini"] != "https://generativelanguage.googleapis.com" {
+		t.Errorf("gemini = %q", cfg.Providers["gemini"])
+	}
+}
+
+func TestLoadProvidersKeepsOthersWhenOpenAIEnvSet(t *testing.T) {
+	path := writeConfig(t, "providers:\n  openai: https://api.openai.com\n  anthropic: https://api.anthropic.com\n")
+	t.Setenv("SHINEL_TARGET_URL", "http://upstream:8080")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Providers["openai"] != "http://upstream:8080" {
+		t.Errorf("openai = %q", cfg.Providers["openai"])
+	}
+	if cfg.Providers["anthropic"] != "https://api.anthropic.com" {
+		t.Errorf("anthropic overwritten: %v", cfg.Providers)
 	}
 }

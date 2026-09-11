@@ -213,8 +213,8 @@ type view struct {
 	Server   struct {
 		Port int `json:"port"`
 	} `json:"server"`
-	TargetURL   string   `json:"target_url"`
-	CustomWords []string `json:"custom_words"`
+	Providers   map[string]string `json:"providers,omitempty"`
+	CustomWords []string          `json:"custom_words"`
 	Vault       struct {
 		Type     string `json:"type"`
 		RedisURL string `json:"redis_url,omitempty"`
@@ -236,7 +236,12 @@ func publicConfig(cfg *config.Config) view {
 	var v view
 	v.LogLevel = cfg.LogLevel
 	v.Server.Port = cfg.Server.Port
-	v.TargetURL = DisplayURL(cfg.Admin.Redact, cfg.TargetURL)
+	if len(cfg.Providers) > 0 {
+		v.Providers = make(map[string]string, len(cfg.Providers))
+		for name, raw := range cfg.Providers {
+			v.Providers[name] = DisplayURL(cfg.Admin.Redact, raw)
+		}
+	}
 	v.CustomWords = cfg.CustomWords
 	v.Vault.Type = cfg.Vault.Type
 	v.Vault.RedisURL = DisplayURL(cfg.Admin.Redact, cfg.Vault.RedisURL)

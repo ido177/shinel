@@ -16,23 +16,25 @@ import (
 
 func TestConfigRedactsRedisPassword(t *testing.T) {
 	tests := []struct {
-		name   string
-		redis  string
-		target string
-		leak   string
+		name     string
+		redis    string
+		provider string
+		leak     string
 	}{
-		{"userinfo password", "redis://user:secret@localhost:6379/0", "https://api.openai.com", "secret"},
-		{"password as user", "redis://secret@localhost:6379/0", "https://api.openai.com", "secret"},
-		{"query password", "redis://localhost:6379/0?password=secret", "https://api.openai.com", "secret"},
-		{"target basic auth", "redis://localhost:6379/0", "https://user:sk-live@api.example/v1", "sk-live"},
-		{"target api_key", "redis://localhost:6379/0", "https://api.example/v1?api_key=sk-live", "sk-live"},
+		{"userinfo password", "redis://user:secret@localhost:6379/0", "", "secret"},
+		{"password as user", "redis://secret@localhost:6379/0", "", "secret"},
+		{"query password", "redis://localhost:6379/0?password=secret", "", "secret"},
+		{"provider userinfo", "", "https://user:sk-live@api.example/v1", "sk-live"},
+		{"provider api_key", "", "https://api.example/v1?api_key=sk-live", "sk-live"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := &config.Config{}
 			cfg.Admin.Redact = true
 			cfg.Vault.RedisURL = tc.redis
-			cfg.TargetURL = tc.target
+			if tc.provider != "" {
+				cfg.Providers = map[string]string{"openai": tc.provider}
+			}
 			rec := httptest.NewRecorder()
 			New(cfg, stats.New(10), NewLogSink(10)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/config", nil))
 			if rec.Code != http.StatusOK {
@@ -57,7 +59,7 @@ func TestConfigShowsSecretsWhenRedactOff(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Admin.Redact = false
 	cfg.Vault.RedisURL = "redis://user:secret@localhost:6379/0"
-	cfg.TargetURL = "https://user:sk-live@api.example/v1"
+	cfg.Providers = map[string]string{"openai": "https://user:sk-live@api.example/v1"}
 	rec := httptest.NewRecorder()
 	New(cfg, stats.New(10), NewLogSink(10)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/config", nil))
 	body := rec.Body.String()
@@ -79,6 +81,20 @@ func TestDisplayURL(t *testing.T) {
 	}
 }
 
+func TestConfigRedactsProviderURLs(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Admin.Redact = true
+	cfg.Providers = map[string]string{"openai": "https://user:sk-live@api.openai.com"}
+	rec := httptest.NewRecorder()
+	New(cfg, stats.New(10), NewLogSink(10)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/config", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "sk-live") {
+		t.Errorf("provider password leaked: %s", rec.Body.String())
+	}
+}
+
 func TestStatsAndIndex(t *testing.T) {
 	st := stats.New(10)
 	st.Record("POST", "/v1/chat", map[string]string{"[EMAIL_1]": "a@x.com"})
@@ -96,8 +112,8 @@ func TestStatsAndIndex(t *testing.T) {
 	if !strings.Contains(body, `rel="icon"`) || !strings.Contains(body, "🧥") {
 		t.Error("index missing favicon or coat mark")
 	}
-	if !strings.Contains(body, "<h1>Shinel</h1>") {
-		t.Error("index missing service name")
+	if !strings.Contains(body, "<h1>") || !strings.Contains(body, "class=\"mark\"") || !strings.Contains(body, "Shinel") {
+		t.Error("index missing service name with coat on the left")
 	}
 	if !strings.Contains(rec.Body.String(), "https://github.com/ido177/shinel") {
 		t.Error("index missing GitHub link")
