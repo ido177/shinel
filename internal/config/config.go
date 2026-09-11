@@ -135,6 +135,9 @@ func Load(path string) (*Config, error) {
 	if url := os.Getenv("SHINEL_ML_URL"); url != "" {
 		cfg.MLEngine.URL = url
 	}
+	if url := os.Getenv("SHINEL_REDIS_URL"); url != "" {
+		cfg.Vault.RedisURL = url
+	}
 	// Itest points the openai prefix at the echo container. Other providers stay as in yaml.
 	if url := os.Getenv("SHINEL_TARGET_URL"); url != "" {
 		if cfg.Providers == nil {

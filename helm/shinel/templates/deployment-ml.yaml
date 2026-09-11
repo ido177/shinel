@@ -1,0 +1,65 @@
+{{- if .Values.ml.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "shinel.fullname" . }}-ml
+  labels:
+    {{- include "shinel.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ml
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "shinel.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: ml
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+      labels:
+        {{- include "shinel.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: ml
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: ml
+          image: "{{ .Values.image.ml.repository }}:{{ .Values.image.ml.tag | default "latest" }}"
+          imagePullPolicy: {{ .Values.image.ml.pullPolicy | default "IfNotPresent" }}
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: SHINEL_CONFIG
+              value: /etc/shinel/config.yaml
+          volumeMounts:
+            - name: config
+              mountPath: /etc/shinel
+              readOnly: true
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 20
+          {{- with .Values.ml.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "shinel.fullname" . }}
+{{- end }}

@@ -120,11 +120,15 @@ def test_rejects_missing_fields():
 
 def test_health_reports_model_state():
     install([])
-    assert client.get("/health").json() == {"status": "ok"}
+    r = client.get("/health")
+    assert r.status_code == 200
+    assert r.json() == {"status": "ok"}
 
     main._model = None
     main._engine = None
-    assert client.get("/health").json() == {"status": "loading"}
+    r = client.get("/health")
+    assert r.status_code == 503
+    assert r.json() == {"status": "loading"}
 
 
 def test_engine_batches_same_labels():

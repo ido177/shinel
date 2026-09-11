@@ -1,0 +1,18 @@
+{{- $cfg := default dict .Values.config | deepCopy -}}
+{{- $admin := default dict $cfg.admin -}}
+{{- $_ := set $admin "bind" "0.0.0.0" -}}
+{{- $_ := set $cfg "admin" $admin -}}
+{{- if eq (include "shinel.redisVault" .) "true" -}}
+  {{- $_ := set $cfg "vault" (dict "type" "redis") -}}
+{{- else if $cfg.vault -}}
+  {{- $_ := unset $cfg.vault "redis_url" -}}
+{{- end -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "shinel.fullname" . }}
+  labels:
+    {{- include "shinel.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    {{- toYaml $cfg | nindent 4 }}

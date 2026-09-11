@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "shinel.fullname" . }}
+  labels:
+    {{- include "shinel.labels" . | nindent 4 }}
+    app.kubernetes.io/component: proxy
+spec:
+  replicas: {{ .Values.replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "shinel.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: proxy
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+      labels:
+        {{- include "shinel.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: proxy
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: proxy
+          image: "{{ .Values.image.proxy.repository }}:{{ .Values.image.proxy.tag | default "latest" }}"
+          imagePullPolicy: {{ .Values.image.proxy.pullPolicy | default "IfNotPresent" }}
+          ports:
+            - name: http
+              containerPort: {{ dig "server" "port" 8080 (.Values.config | default dict) }}
+            - name: admin
+              containerPort: {{ dig "admin" "port" 8081 (.Values.config | default dict) }}
+          env:
+            - name: SHINEL_ADMIN_BIND
+              value: "0.0.0.0"
+            - name: SHINEL_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "shinel.fullname" . }}
+                  key: admin-token
+            {{- if eq (include "shinel.redisVault" .) "true" }}
+            - name: SHINEL_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "shinel.fullname" . }}
+                  key: redis-url
+            {{- end }}
+            {{- if .Values.ml.enabled }}
+            - name: SHINEL_ML_URL
+              value: "http://{{ include "shinel.fullname" . }}-ml:8000/analyze"
+            {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/shinel
+              readOnly: true
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 20
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "shinel.fullname" . }}

@@ -31,6 +31,22 @@ func TestLoadMLURLEnvOverridesFile(t *testing.T) {
 	}
 }
 
+func TestLoadRedisURLEnvOverridesFile(t *testing.T) {
+	path := writeConfig(t, "vault:\n  type: redis\n  redis_url: redis://from-file:6379/0\n")
+	t.Setenv("SHINEL_REDIS_URL", "redis://:secret@redis:6379/0")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if want := "redis://:secret@redis:6379/0"; cfg.Vault.RedisURL != want {
+		t.Errorf("RedisURL = %q, want %q", cfg.Vault.RedisURL, want)
+	}
+	if cfg.Vault.Type != "redis" {
+		t.Errorf("Type = %q, want redis", cfg.Vault.Type)
+	}
+}
+
 func TestLoadRejectsTargetURL(t *testing.T) {
 	path := writeConfig(t, "target_url: http://upstream:8080\n")
 	if _, err := Load(path); err == nil {

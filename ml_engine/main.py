@@ -17,6 +17,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from settings import model_name
@@ -138,8 +139,10 @@ class Entity(BaseModel):
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok" if _model is not None else "loading"}
+def health():
+    if _model is None:
+        return JSONResponse({"status": "loading"}, status_code=503)
+    return {"status": "ok"}
 
 
 # Deliberately sync: inference is blocking and CPU bound, so FastAPI runs this

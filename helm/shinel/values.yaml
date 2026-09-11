@@ -1,0 +1,71 @@
+# Images from `make build` / `make push`. Point repository at your registry.
+image:
+  # LLM reverse proxy (Dockerfile.proxy).
+  proxy:
+    repository: shinel-proxy
+    tag: latest
+  # GLiNER sidecar (Dockerfile.python). Unused when ml.enabled is false.
+  ml:
+    repository: shinel-ml-engine
+    tag: latest
+  # Vault backend. Unused when redis.enabled is false.
+  redis:
+    repository: redis
+    tag: 7-alpine
+
+# Proxy replicas. Redis and ML stay at 1.
+replicaCount: 1
+
+# Dashboard password (HTTP basic user "admin"). Empty = generate on install, reuse on upgrade.
+admin:
+  token: ""
+
+# In-cluster Redis for the token vault (TTL 5m). false without redis.url → memory vault.
+redis:
+  enabled: true
+  # Empty = generate on install, reuse on upgrade.
+  password: ""
+  # External Redis when enabled is false. Goes into a Secret as SHINEL_REDIS_URL;
+  # do not put credentials in config.vault.redis_url.
+  # url: redis://:password@redis.example:6379/0
+
+# GLiNER sidecar. false → regex/secrets only; SHINEL_ML_URL is not set.
+ml:
+  enabled: true
+  # Torch + GLiNER need RAM; omit to leave requests/limits unset.
+  resources:
+    requests:
+      cpu: 500m
+      memory: 2Gi
+    limits:
+      memory: 4Gi
+
+# Overlay for /etc/shinel/config.yaml. Omitted keys use Go defaults
+# (providers openai/anthropic/gemini, log_level info, admin.redact true,
+# ml labels PERSON/ORG/LOCATION/PASSWORD/SECRET, model urchade/gliner_multi-v2.1).
+# Chart always sets admin.bind to 0.0.0.0. Redis vault type is set when redis.enabled or redis.url.
+# ml_engine.url is injected as SHINEL_ML_URL, not written here.
+config:
+  ml_engine:
+    # Go default is 2000ms; the sidecar is slower in-cluster.
+    timeout_ms: 15000
+
+# Proxy Service. type defaults to ClusterIP, port to 8080.
+# service:
+#   type: ClusterIP
+#   port: 8080
+
+# Ingress for the proxy (8080) only. Admin stays ClusterIP.
+ingress:
+  enabled: false
+  # className: nginx
+  # hosts:
+  #   - host: shinel.example
+  #     paths:
+  #       - path: /
+  #         pathType: Prefix
+  # tls: []
+
+# imagePullSecrets: []
+# nameOverride: ""
+# fullnameOverride: ""

@@ -1,0 +1,21 @@
+{{- $proxyPort := (.Values.service | default dict).port | default 8080 -}}
+{{- $adminPort := dig "service" "port" 8081 (.Values.admin | default dict) -}}
+1. Point the LLM client at the proxy (ClusterIP, no Ingress by default):
+
+   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "shinel.fullname" . }} {{ $proxyPort }}:{{ $proxyPort }}
+
+   Then http://localhost:{{ $proxyPort }}/openai/v1/... (or /anthropic, /gemini).
+
+2. Admin dashboard (not exposed publicly):
+
+   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "shinel.fullname" . }}-admin {{ $adminPort }}:{{ $adminPort }}
+
+   Password:
+
+   kubectl -n {{ .Release.Namespace }} get secret {{ include "shinel.fullname" . }} -o jsonpath='{.data.admin-token}' | base64 -d; echo
+
+3. Images default to shinel-proxy / shinel-ml-engine:latest. Build with `make build` and set image.*.repository after `make push`.
+{{- if .Values.ml.enabled }}
+
+   ML sidecar stays Ready only after GLiNER is in memory (GET /health → 200). First start can take a few minutes.
+{{- end }}

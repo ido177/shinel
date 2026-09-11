@@ -61,6 +61,24 @@ make down
 
 `make itest` rebuilds the same ML image, so it needs a non-empty token. `make up` exports `HF_TOKEN` even when empty so Compose does not abort; an empty secret is the same anonymous bake as `Dockerfile.python` (`required=false`). After a failed or anonymous bake, rebuild so Docker does not reuse that layer (`make build` is enough when `Dockerfile.python` or `requirements.txt` changed).
 
+## Helm
+
+The chart in `helm/shinel` starts the proxy, the GLiNER sidecar, and Redis. Config is `values.config` (same keys as `config.yaml`). Admin token and Redis password go into a Secret; empty values are generated on first install and reused on upgrade. `vault.type` is `redis` when `redis.enabled` or `redis.url` is set. The sidecar URL is `SHINEL_ML_URL`, not the ConfigMap.
+
+```bash
+make build
+# optional: make push DOCKER_USERNAME=you
+
+helm install shinel ./helm/shinel \
+  --set image.proxy.repository=you/shinel-proxy \
+  --set image.ml.repository=you/shinel-ml-engine
+
+# ml.enabled=false skips GLiNER
+# redis.enabled=false uses in-memory vault; add redis.url for an external Redis (Secret, not ConfigMap)
+```
+
+`kubectl port-forward` the proxy (`8080`) and admin (`8081`) services. The dashboard password is the `admin-token` key on the chart Secret. There is no Ingress unless you set `ingress.enabled`.
+
 ## 🖥️ Dashboard
 
 The UI is a second HTTP server (default `127.0.0.1:8081`), not a path on the LLM proxy.
